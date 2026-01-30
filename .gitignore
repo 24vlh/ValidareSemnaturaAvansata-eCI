@@ -1,0 +1,6 @@
+.venv
+.idea
+ValidareSemnatura-eCI.spec
+build
+dist
+__pycache__
