@@ -14,6 +14,12 @@ Aplicația face **doar validare tehnică criptografică**:
 
 Nu autentifică persoane, nu face login, nu trimite date și nu modifică documente.
 
+**Notă rețea / confidențialitate:**  
+Aplicația **nu trimite niciodată PDF-ul** și nu încarcă documente.  
+Poți alege verificarea revocării fie prin **rețea** (CRL/AIA/OCSP), fie folosind **CRL locale** din `assets/certs/*.crl`.  
+Dacă activezi opțiunea de rețea, aplicația poate face **cereri HTTP** către URL‑uri publicate în certificate pentru verificarea revocării sau a lanțului.  
+Aceste cereri nu conțin documentul, doar cer informații despre certificate.
+
 ---
 
 ## De ce există
@@ -80,15 +86,24 @@ Aplicația verifică:
 ## Cum se folosește (GUI – recomandat)
 
 1. Rulează `ValidareSemnatura-eCI.exe`
-2. Selectează:
+2. Alege sursa certificatelor:
+   - certificate MAI incluse (assets/certs) **sau**
+   - selectare manuală (Root CA + Sub CA)
+3. Selectează:
    - PDF-ul semnat
    - certificatul Root CA
    - certificatul Sub CA
-3. (Opțional) bifează:
+4. (Opțional) bifează:
    - validare strictă emitent
    - acces la rețea pentru revocare (CRL / AIA)
-4. Apasă **Validează**
-5. Primești rezultatul **VALID / INVALID + detalii complete**
+   - mod strict eCI (pin MAI + revocare obligatorie)
+   - CRL local (assets/certs/*.crl)
+   - mod revocare: soft-fail / hard-fail / require
+   - verificare timestamp/LTV (dacă există)
+5. Apasă **Validează**
+6. Primești rezultatul **VALID / INVALID + detalii complete**
+   - tabul **Certificat** afișează Subject/Issuer/SHA256 + EKU/Policy OIDs
+   - poți copia detaliile certificatului sau exporta certificatul semnatarului
 
 ---
 
@@ -102,6 +117,17 @@ Aplicația este compatibilă cu fișiere:
 - `.cer`
 - `.crt`
 - `.pem`
+
+### Certificate incluse (assets/certs)
+
+Dacă alegi varianta „certificate incluse”, aplicația folosește aceste fișiere:
+
+| Fișier | SHA256 |
+|---|---|
+| `ro_cei_mai_root-ca.cer` | `b7a766f52218c8083e936f9ab085e97c67671ecd4fd3069b641c638072e44b1d` |
+| `ro_cei_mai_sub-ca.cer` | `b512f92a6d156008d93ab5ff9690be874afc3401ce0306f477f187799593da80` |
+
+Aplicația afișează aceste amprente în UI și îți permite să le copiezi rapid.
 
 ---
 
@@ -176,6 +202,21 @@ Aceasta **NU** este:
 - instrument de autentificare a persoanei
 
 Este un **instrument de verificare tehnică**, creat pentru claritate, control și transparență.
+
+### Mod strict eCI (opțional)
+Modul strict eCI activează automat:
+- pinning Root/Sub la amprentele oficiale MAI
+- revocare obligatorie (CRL/OCSP)
+- strict issuer + hard mode
+
+Opțional, poți configura filtrarea EKU/Policy OID direct în cod (`ECI_REQUIRED_EKU_OIDS`, `ECI_REQUIRED_POLICY_OIDS`).
+
+### Verificare timestamp/LTV (opțional)
+Când este activată, aplicația cere un **timestamp valid și de încredere** în semnătură (sau content timestamp).
+Dacă nu există timestamp sau acesta nu este valid/trusted, validarea eșuează.
+
+Limitare: această verificare nu înlocuiește validarea completă LTV la momentul semnării și nu poate garanta statutul legal
+în timp; este un control tehnic asupra token‑ului de timestamp.
 
 ---
 
