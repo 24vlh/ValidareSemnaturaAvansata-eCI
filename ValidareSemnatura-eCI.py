@@ -412,6 +412,23 @@ def _save_signer_cert_bytes(pdf_path: Path, dest: Path) -> bool:
         return False
 
 
+def _save_signer_cert_bytes_from_embedded(embedded_sig: Any, dest: Path) -> bool:
+    """
+    Extract signer cert from an embedded signature and save as DER .cer.
+    No validation; best-effort.
+    """
+    try:
+        signer = _find_signer_cert_from_signed_data(
+            embedded_sig.signed_data, embedded_sig.signer_info
+        )
+        if signer is None:
+            return False
+        dest.write_bytes(signer.dump())
+        return True
+    except Exception:
+        return False
+
+
 # =============================================================================
 # Hard mode: reject extra embedded certs in CMS
 # =============================================================================
@@ -1245,6 +1262,650 @@ def validate_pdf_against_two_cas(
 
 
 # =============================================================================
+# Signature validation helper (multi-signature aware)
+# =============================================================================
+def validate_embedded_signature_against_two_cas(
+    embedded_sig: Any,
+    signature_count: int,
+    root_cert: x509.Certificate,
+    sub_cert: x509.Certificate,
+    root_fp: str,
+    sub_fp: str,
+    allow_fetching: bool,
+    revocation_mode: str,
+    strict_issuer: bool,
+    hard_mode: bool,
+    strict_eci: bool,
+    local_crls: Optional[List[bytes]],
+    require_timestamp: bool,
+    root_ca_path: Path,
+    sub_ca_path: Path,
+) -> Result:
+    strict_eci_enabled = bool(strict_eci)
+    strict_eci_notes: List[str] = []
+
+    vc = ValidationContext(
+        trust_roots=[_to_asn1(root_cert)],
+        other_certs=[_to_asn1(sub_cert)],
+        allow_fetching=allow_fetching,
+        revocation_mode=revocation_mode,
+        crls=local_crls,
+    )
+
+    try:
+        status = validate_pdf_signature(embedded_sig, vc)
+
+        intact = bool(getattr(status, "intact", False))
+        valid = bool(getattr(status, "valid", False))
+        trusted = bool(getattr(status, "trusted", False))
+        ts_validity = getattr(status, "timestamp_validity", None)
+        content_ts_validity = getattr(status, "content_timestamp_validity", None)
+        timestamp_ok: Optional[bool] = None
+        timestamp_info: Optional[str] = None
+        ts_value: Optional[str] = None
+        ts_tsa_subject: Optional[str] = None
+        cts_value: Optional[str] = None
+        cts_tsa_subject: Optional[str] = None
+        if ts_validity is not None:
+            try:
+                ts_value = ts_validity.timestamp.isoformat()
+            except Exception:
+                ts_value = None
+            try:
+                ts_tsa_subject = ts_validity.signing_cert.subject.human_friendly
+            except Exception:
+                ts_tsa_subject = None
+        if content_ts_validity is not None:
+            try:
+                cts_value = content_ts_validity.timestamp.isoformat()
+            except Exception:
+                cts_value = None
+            try:
+                cts_tsa_subject = content_ts_validity.signing_cert.subject.human_friendly
+            except Exception:
+                cts_tsa_subject = None
+        if require_timestamp:
+            any_ts = ts_validity or content_ts_validity
+            if any_ts is None:
+                timestamp_ok = False
+                timestamp_info = "Nu există timestamp validabil în semnătură."
+            else:
+                ok_list = []
+                if ts_validity is not None:
+                    ok_list.append(bool(ts_validity.valid and ts_validity.intact and ts_validity.trusted))
+                if content_ts_validity is not None:
+                    ok_list.append(
+                        bool(content_ts_validity.valid and content_ts_validity.intact and content_ts_validity.trusted)
+                    )
+                timestamp_ok = any(ok_list)
+                timestamp_info = "Timestamp valid și de încredere." if timestamp_ok else "Timestamp prezent dar invalid."
+
+        coverage = getattr(status, "coverage", None)
+        modification_level = getattr(status, "modification_level", None)
+
+        coverage_entire = _is_entire_file_coverage(coverage)
+        modification_none = _is_modification_none(modification_level)
+
+        # Extract signer cert
+        signer_asn1 = None
+        signer_crypto: Optional[x509.Certificate] = None
+        signer_subject = None
+        signer_issuer = None
+        signer_fp = None
+        signer_eku_oids: Optional[List[str]] = None
+        signer_policy_oids: Optional[List[str]] = None
+        signer_key_usage: Optional[str] = None
+        signer_not_before: Optional[str] = None
+        signer_not_after: Optional[str] = None
+
+        try:
+            signer_asn1 = status.signing_cert
+        except Exception:
+            signer_asn1 = None
+
+        if signer_asn1 is not None:
+            try:
+                signer_subject = signer_asn1.subject.human_friendly
+                signer_issuer = signer_asn1.issuer.human_friendly
+                signer_fp = hashlib.sha256(signer_asn1.dump()).hexdigest()
+                signer_crypto = x509.load_der_x509_certificate(signer_asn1.dump())
+            except Exception:
+                signer_crypto = None
+
+        if signer_crypto is not None:
+            try:
+                signer_key_usage = str(
+                    signer_crypto.extensions.get_extension_for_class(x509.KeyUsage).value
+                )
+            except Exception:
+                signer_key_usage = None
+            signer_eku_oids = _extract_eku_oids(signer_crypto)
+            signer_policy_oids = _extract_policy_oids(signer_crypto)
+            try:
+                signer_not_before = signer_crypto.not_valid_before.isoformat()
+                signer_not_after = signer_crypto.not_valid_after.isoformat()
+            except Exception:
+                signer_not_before = None
+                signer_not_after = None
+
+        # Strict eCI checks (fail-closed)
+        strict_eci_ok: Optional[bool] = None
+        if strict_eci_enabled:
+            if signer_crypto is None:
+                return Result(
+                    ok=False,
+                    message="STRICT_ECI_NO_SIGNER_CERT",
+                    signature_intact=intact,
+                    signature_valid=valid,
+                    signature_trusted=trusted,
+                    coverage_entire_file=coverage_entire,
+                    modification_none=modification_none,
+                    signature_count=signature_count,
+                    signer_subject=signer_subject,
+                    signer_issuer=signer_issuer,
+                    signer_cert_sha256=signer_fp,
+                    signer_eku_oids=signer_eku_oids,
+                    signer_policy_oids=signer_policy_oids,
+                    signer_key_usage=signer_key_usage,
+                    signer_not_before=signer_not_before,
+                    signer_not_after=signer_not_after,
+                    root_cert_sha256=root_fp,
+                    sub_cert_sha256=sub_fp,
+                    strict_issuer_enabled=strict_issuer,
+                    hard_mode_enabled=hard_mode,
+                    allow_fetching_enabled=allow_fetching,
+                    revocation_mode=revocation_mode,
+                    local_crl_enabled=bool(local_crls),
+                    local_crl_count=len(local_crls or []),
+                    strict_eci_enabled=True,
+                    strict_eci_ok=False,
+                    strict_eci_notes=["Nu pot extrage certificatul semnatarului."],
+                    used_root_path=str(root_ca_path),
+                    used_sub_path=str(sub_ca_path),
+                )
+
+            # Key usage check
+            try:
+                ku = signer_crypto.extensions.get_extension_for_class(x509.KeyUsage).value
+                if not (ku.digital_signature or ku.content_commitment):
+                    return Result(
+                        ok=False,
+                        message="STRICT_ECI_KEY_USAGE_FAIL",
+                        signature_intact=intact,
+                        signature_valid=valid,
+                        signature_trusted=trusted,
+                        coverage_entire_file=coverage_entire,
+                        modification_none=modification_none,
+                        signature_count=signature_count,
+                        signer_subject=signer_subject,
+                        signer_issuer=signer_issuer,
+                        signer_cert_sha256=signer_fp,
+                        root_cert_sha256=root_fp,
+                        sub_cert_sha256=sub_fp,
+                        strict_issuer_enabled=strict_issuer,
+                        hard_mode_enabled=hard_mode,
+                        allow_fetching_enabled=allow_fetching,
+                        revocation_mode=revocation_mode,
+                        local_crl_enabled=bool(local_crls),
+                        local_crl_count=len(local_crls or []),
+                        strict_eci_enabled=True,
+                        strict_eci_ok=False,
+                        strict_eci_notes=["KeyUsage nu include digitalSignature/contentCommitment."],
+                        used_root_path=str(root_ca_path),
+                        used_sub_path=str(sub_ca_path),
+                    )
+            except Exception:
+                return Result(
+                    ok=False,
+                    message="STRICT_ECI_KEY_USAGE_MISSING",
+                    signature_intact=intact,
+                    signature_valid=valid,
+                    signature_trusted=trusted,
+                    coverage_entire_file=coverage_entire,
+                    modification_none=modification_none,
+                    signature_count=signature_count,
+                    signer_subject=signer_subject,
+                    signer_issuer=signer_issuer,
+                    signer_cert_sha256=signer_fp,
+                    signer_eku_oids=signer_eku_oids,
+                    signer_policy_oids=signer_policy_oids,
+                    signer_key_usage=signer_key_usage,
+                    signer_not_before=signer_not_before,
+                    signer_not_after=signer_not_after,
+                    root_cert_sha256=root_fp,
+                    sub_cert_sha256=sub_fp,
+                    strict_issuer_enabled=strict_issuer,
+                    hard_mode_enabled=hard_mode,
+                    allow_fetching_enabled=allow_fetching,
+                    revocation_mode=revocation_mode,
+                    local_crl_enabled=bool(local_crls),
+                    local_crl_count=len(local_crls or []),
+                    strict_eci_enabled=True,
+                    strict_eci_ok=False,
+                    strict_eci_notes=["KeyUsage lipsă pe certificatul semnatar."],
+                    used_root_path=str(root_ca_path),
+                    used_sub_path=str(sub_ca_path),
+                )
+
+            eku_oids = _extract_eku_oids(signer_crypto)
+            if ECI_REQUIRED_EKU_OIDS:
+                if not set(eku_oids).intersection(ECI_REQUIRED_EKU_OIDS):
+                    return Result(
+                        ok=False,
+                        message="STRICT_ECI_EKU_FAIL",
+                        signature_intact=intact,
+                        signature_valid=valid,
+                        signature_trusted=trusted,
+                        coverage_entire_file=coverage_entire,
+                        modification_none=modification_none,
+                        signature_count=signature_count,
+                        signer_subject=signer_subject,
+                        signer_issuer=signer_issuer,
+                        signer_cert_sha256=signer_fp,
+                        root_cert_sha256=root_fp,
+                        sub_cert_sha256=sub_fp,
+                        strict_issuer_enabled=strict_issuer,
+                        hard_mode_enabled=hard_mode,
+                        allow_fetching_enabled=allow_fetching,
+                        revocation_mode=revocation_mode,
+                        local_crl_enabled=bool(local_crls),
+                        local_crl_count=len(local_crls or []),
+                        strict_eci_enabled=True,
+                        strict_eci_ok=False,
+                        strict_eci_notes=["EKU nu corespunde politicii eCI."],
+                        used_root_path=str(root_ca_path),
+                        used_sub_path=str(sub_ca_path),
+                    )
+            else:
+                strict_eci_notes.append("EKU policy nedefinit (nu se aplică filtrare).")
+
+            pol_oids = _extract_policy_oids(signer_crypto)
+            if ECI_REQUIRED_POLICY_OIDS:
+                if not set(pol_oids).intersection(ECI_REQUIRED_POLICY_OIDS):
+                    return Result(
+                        ok=False,
+                        message="STRICT_ECI_POLICY_FAIL",
+                        signature_intact=intact,
+                        signature_valid=valid,
+                        signature_trusted=trusted,
+                        coverage_entire_file=coverage_entire,
+                        modification_none=modification_none,
+                        signature_count=signature_count,
+                        signer_subject=signer_subject,
+                        signer_issuer=signer_issuer,
+                        signer_cert_sha256=signer_fp,
+                        root_cert_sha256=root_fp,
+                        sub_cert_sha256=sub_fp,
+                        strict_issuer_enabled=strict_issuer,
+                        hard_mode_enabled=hard_mode,
+                        allow_fetching_enabled=allow_fetching,
+                        revocation_mode=revocation_mode,
+                        local_crl_enabled=bool(local_crls),
+                        local_crl_count=len(local_crls or []),
+                        strict_eci_enabled=True,
+                        strict_eci_ok=False,
+                        strict_eci_notes=["Policy OID nu corespunde eCI."],
+                        used_root_path=str(root_ca_path),
+                        used_sub_path=str(sub_ca_path),
+                    )
+            else:
+                strict_eci_notes.append("Policy OID nedefinit (nu se aplică filtrare).")
+
+            strict_eci_ok = True
+
+        # Hard mode (fail-closed if cannot parse /Contents)
+        hard_ok: Optional[bool] = None
+        hard_extras: Optional[List[str]] = None
+        if hard_mode:
+            if signer_fp is None:
+                return Result(
+                    ok=False,
+                    message="HARD_MODE_NO_SIGNER_CERT_EXTRACTED",
+                    signature_intact=intact,
+                    signature_valid=valid,
+                    signature_trusted=trusted,
+                    coverage_entire_file=coverage_entire,
+                    modification_none=modification_none,
+                    signature_count=signature_count,
+                    signer_subject=signer_subject,
+                    signer_issuer=signer_issuer,
+                    signer_cert_sha256=signer_fp,
+                    signer_eku_oids=signer_eku_oids,
+                    signer_policy_oids=signer_policy_oids,
+                    signer_key_usage=signer_key_usage,
+                    signer_not_before=signer_not_before,
+                    signer_not_after=signer_not_after,
+                    root_cert_sha256=root_fp,
+                    sub_cert_sha256=sub_fp,
+                    strict_issuer_enabled=strict_issuer,
+                    hard_mode_enabled=True,
+                    hard_mode_ok=False,
+                    hard_mode_extra_certs=None,
+                    allow_fetching_enabled=allow_fetching,
+                    revocation_mode=revocation_mode,
+                    local_crl_enabled=bool(local_crls),
+                    local_crl_count=len(local_crls or []),
+                    timestamp_check_enabled=require_timestamp,
+                    timestamp_ok=timestamp_ok,
+                    timestamp_info=timestamp_info,
+                    timestamp_value=ts_value,
+                    timestamp_tsa_subject=ts_tsa_subject,
+                    content_timestamp_value=cts_value,
+                    content_timestamp_tsa_subject=cts_tsa_subject,
+                    strict_eci_enabled=strict_eci_enabled,
+                    strict_eci_ok=strict_eci_ok,
+                    strict_eci_notes=strict_eci_notes if strict_eci_enabled else None,
+                    used_root_path=str(root_ca_path),
+                    used_sub_path=str(sub_ca_path),
+                    details={"reason": "Cannot compute allowlist without signer cert fingerprint."},
+                )
+
+            allowed = {root_fp, sub_fp, signer_fp}
+            try:
+                hard_ok, hard_extras = _hard_mode_check(embedded_sig, allowed)
+            except Exception as e:
+                return Result(
+                    ok=False,
+                    message=f"HARD_MODE_PARSE_FAILED: {type(e).__name__}: {e}",
+                    signature_intact=intact,
+                    signature_valid=valid,
+                    signature_trusted=trusted,
+                    coverage_entire_file=coverage_entire,
+                    modification_none=modification_none,
+                    signature_count=signature_count,
+                    signer_subject=signer_subject,
+                    signer_issuer=signer_issuer,
+                    signer_cert_sha256=signer_fp,
+                    signer_eku_oids=signer_eku_oids,
+                    signer_policy_oids=signer_policy_oids,
+                    signer_key_usage=signer_key_usage,
+                    signer_not_before=signer_not_before,
+                    signer_not_after=signer_not_after,
+                    root_cert_sha256=root_fp,
+                    sub_cert_sha256=sub_fp,
+                    strict_issuer_enabled=strict_issuer,
+                    hard_mode_enabled=True,
+                    hard_mode_ok=False,
+                    hard_mode_extra_certs=None,
+                    allow_fetching_enabled=allow_fetching,
+                    revocation_mode=revocation_mode,
+                    local_crl_enabled=bool(local_crls),
+                    local_crl_count=len(local_crls or []),
+                    timestamp_check_enabled=require_timestamp,
+                    timestamp_ok=timestamp_ok,
+                    timestamp_info=timestamp_info,
+                    timestamp_value=ts_value,
+                    timestamp_tsa_subject=ts_tsa_subject,
+                    content_timestamp_value=cts_value,
+                    content_timestamp_tsa_subject=cts_tsa_subject,
+                    strict_eci_enabled=strict_eci_enabled,
+                    strict_eci_ok=strict_eci_ok,
+                    strict_eci_notes=strict_eci_notes if strict_eci_enabled else None,
+                    used_root_path=str(root_ca_path),
+                    used_sub_path=str(sub_ca_path),
+                    details={"reason": "Hard mode failed closed (cannot parse CMS in /Contents)."},
+                )
+
+            if not hard_ok:
+                return Result(
+                    ok=False,
+                    message="HARD_MODE_EXTRA_EMBEDDED_CERTS_DETECTED",
+                    signature_intact=intact,
+                    signature_valid=valid,
+                    signature_trusted=trusted,
+                    coverage_entire_file=coverage_entire,
+                    modification_none=modification_none,
+                    signature_count=signature_count,
+                    signer_subject=signer_subject,
+                    signer_issuer=signer_issuer,
+                    signer_cert_sha256=signer_fp,
+                    signer_eku_oids=signer_eku_oids,
+                    signer_policy_oids=signer_policy_oids,
+                    signer_key_usage=signer_key_usage,
+                    signer_not_before=signer_not_before,
+                    signer_not_after=signer_not_after,
+                    root_cert_sha256=root_fp,
+                    sub_cert_sha256=sub_fp,
+                    strict_issuer_enabled=strict_issuer,
+                    hard_mode_enabled=True,
+                    hard_mode_ok=False,
+                    hard_mode_extra_certs=hard_extras,
+                    allow_fetching_enabled=allow_fetching,
+                    revocation_mode=revocation_mode,
+                    local_crl_enabled=bool(local_crls),
+                    local_crl_count=len(local_crls or []),
+                    timestamp_check_enabled=require_timestamp,
+                    timestamp_ok=timestamp_ok,
+                    timestamp_info=timestamp_info,
+                    timestamp_value=ts_value,
+                    timestamp_tsa_subject=ts_tsa_subject,
+                    content_timestamp_value=cts_value,
+                    content_timestamp_tsa_subject=cts_tsa_subject,
+                    strict_eci_enabled=strict_eci_enabled,
+                    strict_eci_ok=strict_eci_ok,
+                    strict_eci_notes=strict_eci_notes if strict_eci_enabled else None,
+                    used_root_path=str(root_ca_path),
+                    used_sub_path=str(sub_ca_path),
+                    details={
+                        "allowed_fingerprints": sorted(list(allowed)),
+                        "extra_embedded_cert_fingerprints": hard_extras,
+                        "note": "Hard mode rejects any CMS-embedded certificate not equal to Root/Sub/Signer.",
+                    },
+                )
+
+        # Strict issuer (true pin)
+        expected_issuer = None
+        actual_issuer = None
+        strict_sig_ok: Optional[bool] = None
+        strict_name_ok: Optional[bool] = None
+
+        if strict_issuer:
+            expected_issuer = sub_cert.subject.rfc4514_string()
+
+            if signer_crypto is None:
+                return Result(
+                    ok=False,
+                    message="STRICT_ISSUER_NO_SIGNER_CERT_EXTRACTED",
+                    signature_intact=intact,
+                    signature_valid=valid,
+                    signature_trusted=trusted,
+                    coverage_entire_file=coverage_entire,
+                    modification_none=modification_none,
+                    signature_count=signature_count,
+                    signer_subject=signer_subject,
+                    signer_issuer=signer_issuer,
+                    signer_cert_sha256=signer_fp,
+                    root_cert_sha256=root_fp,
+                    sub_cert_sha256=sub_fp,
+                    strict_issuer_enabled=True,
+                    strict_issuer_expected=expected_issuer,
+                    strict_issuer_actual=None,
+                    strict_issuer_verified_by_signature=None,
+                    strict_issuer_name_match=None,
+                    hard_mode_enabled=hard_mode,
+                    hard_mode_ok=True if hard_mode else None,
+                    allow_fetching_enabled=allow_fetching,
+                    revocation_mode=revocation_mode,
+                    local_crl_enabled=bool(local_crls),
+                    local_crl_count=len(local_crls or []),
+                    timestamp_check_enabled=require_timestamp,
+                    timestamp_ok=timestamp_ok,
+                    timestamp_info=timestamp_info,
+                    timestamp_value=ts_value,
+                    timestamp_tsa_subject=ts_tsa_subject,
+                    content_timestamp_value=cts_value,
+                    content_timestamp_tsa_subject=cts_tsa_subject,
+                    strict_eci_enabled=strict_eci_enabled,
+                    strict_eci_ok=strict_eci_ok,
+                    strict_eci_notes=strict_eci_notes if strict_eci_enabled else None,
+                    used_root_path=str(root_ca_path),
+                    used_sub_path=str(sub_ca_path),
+                    details={"reason": "Could not extract/parse signing cert from PDF signature."},
+                )
+
+            actual_issuer = signer_crypto.issuer.rfc4514_string()
+            strict_name_ok = (signer_crypto.issuer == sub_cert.subject)
+            strict_sig_ok = _verify_cert_issued_by(signer_crypto, sub_cert)
+
+            if not strict_name_ok or not strict_sig_ok:
+                return Result(
+                    ok=False,
+                    message="STRICT_ISSUER_MISMATCH",
+                    signature_intact=intact,
+                    signature_valid=valid,
+                    signature_trusted=trusted,
+                    coverage_entire_file=coverage_entire,
+                    modification_none=modification_none,
+                    signature_count=signature_count,
+                    signer_subject=signer_subject,
+                    signer_issuer=signer_issuer,
+                    signer_cert_sha256=signer_fp,
+                    root_cert_sha256=root_fp,
+                    sub_cert_sha256=sub_fp,
+                    strict_issuer_enabled=True,
+                    strict_issuer_expected=expected_issuer,
+                    strict_issuer_actual=actual_issuer,
+                    strict_issuer_verified_by_signature=bool(strict_sig_ok),
+                    strict_issuer_name_match=bool(strict_name_ok),
+                    hard_mode_enabled=hard_mode,
+                    hard_mode_ok=True if hard_mode else None,
+                    allow_fetching_enabled=allow_fetching,
+                    revocation_mode=revocation_mode,
+                    local_crl_enabled=bool(local_crls),
+                    local_crl_count=len(local_crls or []),
+                    timestamp_check_enabled=require_timestamp,
+                    timestamp_ok=timestamp_ok,
+                    timestamp_info=timestamp_info,
+                    timestamp_value=ts_value,
+                    timestamp_tsa_subject=ts_tsa_subject,
+                    content_timestamp_value=cts_value,
+                    content_timestamp_tsa_subject=cts_tsa_subject,
+                    strict_eci_enabled=strict_eci_enabled,
+                    strict_eci_ok=strict_eci_ok,
+                    strict_eci_notes=strict_eci_notes if strict_eci_enabled else None,
+                    used_root_path=str(root_ca_path),
+                    used_sub_path=str(sub_ca_path),
+                    details={
+                        "expected_sub_subject_rfc4514": expected_issuer,
+                        "actual_signer_issuer_rfc4514": actual_issuer,
+                        "issuer_name_match": bool(strict_name_ok),
+                        "issuer_signature_verified": bool(strict_sig_ok),
+                    },
+                )
+
+        ok = intact and valid and trusted and coverage_entire and modification_none
+        if require_timestamp:
+            ok = ok and (timestamp_ok is True)
+        if strict_eci_enabled:
+            ok = ok and (strict_eci_ok is True)
+
+        if ok:
+            msg = "OK"
+        else:
+            if require_timestamp and timestamp_ok is False:
+                msg = "TIMESTAMP_REQUIRED_FAILED"
+            elif strict_eci_enabled and strict_eci_ok is False:
+                msg = "STRICT_ECI_FAILED"
+            elif not intact:
+                msg = "INTEGRITY_FAILED"
+            elif not valid:
+                msg = "CRYPTO_SIGNATURE_INVALID"
+            elif not trusted:
+                msg = "CHAIN_VALIDATION_FAILED"
+            elif not coverage_entire:
+                msg = "COVERAGE_NOT_ENTIRE_FILE"
+            elif not modification_none:
+                msg = "MODIFICATIONS_DETECTED"
+            else:
+                msg = "SIGNATURE_OR_POLICY_VALIDATION_FAILED"
+
+        summary = {
+            "intact": intact,
+            "valid": valid,
+            "trusted": trusted,
+            "coverage": str(coverage),
+            "modification_level": str(modification_level),
+            "coverage_entire_file": coverage_entire,
+            "modification_none": modification_none,
+            "allow_fetching": bool(allow_fetching),
+            "revocation_mode": str(revocation_mode),
+            "strict_issuer_enabled": bool(strict_issuer),
+            "hard_mode_enabled": bool(hard_mode),
+            "strict_eci_enabled": bool(strict_eci_enabled),
+            "timestamp_required": bool(require_timestamp),
+            "timestamp_ok": bool(timestamp_ok) if timestamp_ok is not None else None,
+        }
+
+        return Result(
+            ok=ok,
+            message=msg,
+            signature_intact=intact,
+            signature_valid=valid,
+            signature_trusted=trusted,
+            coverage_entire_file=coverage_entire,
+            modification_none=modification_none,
+            signature_count=signature_count,
+            signer_subject=signer_subject,
+            signer_issuer=signer_issuer,
+            signer_cert_sha256=signer_fp,
+            signer_eku_oids=signer_eku_oids,
+            signer_policy_oids=signer_policy_oids,
+            signer_key_usage=signer_key_usage,
+            signer_not_before=signer_not_before,
+            signer_not_after=signer_not_after,
+            root_cert_sha256=root_fp,
+            sub_cert_sha256=sub_fp,
+            strict_issuer_enabled=bool(strict_issuer),
+            strict_issuer_expected=expected_issuer,
+            strict_issuer_actual=actual_issuer,
+            strict_issuer_verified_by_signature=strict_sig_ok,
+            strict_issuer_name_match=strict_name_ok,
+            hard_mode_enabled=bool(hard_mode),
+            hard_mode_ok=True if hard_mode else None,
+            hard_mode_extra_certs=hard_extras if hard_mode else None,
+            allow_fetching_enabled=bool(allow_fetching),
+            revocation_mode=str(revocation_mode),
+            local_crl_enabled=bool(local_crls),
+            local_crl_count=len(local_crls or []),
+            timestamp_check_enabled=bool(require_timestamp),
+            timestamp_ok=timestamp_ok,
+            timestamp_info=timestamp_info,
+            timestamp_value=ts_value,
+            timestamp_tsa_subject=ts_tsa_subject,
+            content_timestamp_value=cts_value,
+            content_timestamp_tsa_subject=cts_tsa_subject,
+            strict_eci_enabled=bool(strict_eci_enabled),
+            strict_eci_ok=strict_eci_ok,
+            strict_eci_notes=strict_eci_notes if strict_eci_enabled else None,
+            used_root_path=str(root_ca_path),
+            used_sub_path=str(sub_ca_path),
+            details=summary,
+        )
+    except Exception as e:
+        return Result(
+            ok=False,
+            message=f"EXCEPTION: {type(e).__name__}: {e}",
+            signature_count=signature_count,
+            strict_issuer_enabled=bool(strict_issuer),
+            hard_mode_enabled=bool(hard_mode),
+            allow_fetching_enabled=bool(allow_fetching),
+            revocation_mode=str(revocation_mode),
+            local_crl_enabled=bool(local_crls),
+            local_crl_count=len(local_crls or []),
+            timestamp_check_enabled=bool(require_timestamp),
+            timestamp_ok=None,
+            timestamp_info=None,
+            timestamp_value=None,
+            timestamp_tsa_subject=None,
+            content_timestamp_value=None,
+            content_timestamp_tsa_subject=None,
+            strict_eci_enabled=bool(strict_eci),
+            used_root_path=str(root_ca_path),
+            used_sub_path=str(sub_ca_path),
+        )
+
+
+# =============================================================================
 # Report export
 # =============================================================================
 def export_report(pdf_path: Path, res: Result) -> Tuple[Path, Path]:
@@ -1325,6 +1986,7 @@ def run_gui() -> int:
         style.configure("Muted.TLabel", foreground="#666666")
         style.configure("Link.TLabel", foreground="#1a73e8", font=("Segoe UI", 9, "underline"))
         style.configure("StatusGood.TLabel", foreground="#1b5e20", font=("Segoe UI", 14, "bold"))
+        style.configure("StatusWarn.TLabel", foreground="#e65100", font=("Segoe UI", 14, "bold"))
         style.configure("StatusBad.TLabel", foreground="#b71c1c", font=("Segoe UI", 14, "bold"))
     except Exception:
         pass
@@ -1791,6 +2453,9 @@ def run_gui() -> int:
     tab_res = ttk.Frame(notebook)
     notebook.add(tab_res, text="Rezultat")
 
+    tab_multi = ttk.Frame(notebook)
+    notebook.add(tab_multi, text="Semnături multiple")
+
     inner = ttk.Notebook(tab_res)
     inner.pack(fill="both", expand=True)
 
@@ -1826,6 +2491,30 @@ def run_gui() -> int:
     txt_log = ScrolledText(tab_log, wrap="word")
     txt_log.pack(fill="both", expand=True, padx=6, pady=6)
     txt_log.configure(state="disabled", font=("Consolas", 10))
+
+    # Multi-signature view
+    multi_header = ttk.Frame(tab_multi)
+    multi_header.pack(fill="x", padx=6, pady=(6, 0))
+    multi_status = ttk.Label(multi_header, text="—")
+    multi_status.pack(side="left")
+    multi_note = ttk.Label(
+        multi_header,
+        text="Fiecare semnătură este așteptată să provină din eCI.",
+        style="Muted.TLabel",
+    )
+    multi_note.pack(side="left", padx=(12, 0))
+
+    multi_actions = ttk.Frame(tab_multi)
+    multi_actions.pack(fill="x", padx=6, pady=(6, 0))
+    btn_export_all = ttk.Button(multi_actions, text="Salvează toate rapoartele", width=26)
+    btn_export_all.pack(side="left")
+
+    multi_summary = ScrolledText(tab_multi, wrap="word", height=5)
+    multi_summary.pack(fill="x", expand=False, padx=6, pady=(6, 0))
+    multi_summary.configure(state="disabled", font=("Consolas", 10))
+
+    multi_inner = ttk.Notebook(tab_multi)
+    multi_inner.pack(fill="both", expand=True, padx=6, pady=6)
 
     log_lines: List[str] = []
 
@@ -1924,21 +2613,24 @@ def run_gui() -> int:
 
     last_result: Optional[Result] = None
 
-    def show_result(res: Result):
-        nonlocal last_result
-        last_result = res
+    def set_single_actions_enabled(enabled: bool):
+        state = "normal" if enabled else "disabled"
+        btn_export.configure(state=state)
+        btn_copy_cert.configure(state=state)
+        btn_export_cert.configure(state=state)
 
-        txt_human.configure(state="normal")
-        txt_human.delete("1.0", "end")
-        txt_human.insert("1.0", result_to_human(res))
-        txt_human.configure(state="disabled")
+    def set_mode_single():
+        notebook.tab(tab_res, state="normal")
+        notebook.tab(tab_multi, state="disabled")
+        notebook.select(tab_res)
 
-        txt_json.configure(state="normal")
-        txt_json.delete("1.0", "end")
-        txt_json.insert("1.0", result_to_json(res))
-        txt_json.configure(state="disabled")
+    def set_mode_multi():
+        notebook.tab(tab_res, state="disabled")
+        notebook.tab(tab_multi, state="normal")
+        notebook.select(tab_multi)
 
-        cert_lines = [
+    def build_cert_lines(res: Result) -> List[str]:
+        lines = [
             f"Subject: {res.signer_subject or 'UNKNOWN'}",
             f"Issuer: {res.signer_issuer or 'UNKNOWN'}",
             f"SHA256: {res.signer_cert_sha256 or 'UNKNOWN'}",
@@ -1950,12 +2642,35 @@ def run_gui() -> int:
             f"Policy OIDs: {', '.join(res.signer_policy_oids) if res.signer_policy_oids else 'UNKNOWN'}",
         ]
         if res.timestamp_value or res.content_timestamp_value:
-            cert_lines.append("")
-            cert_lines.append(f"Timestamp: {res.timestamp_value or 'UNKNOWN'}")
-            cert_lines.append(f"TSA: {res.timestamp_tsa_subject or 'UNKNOWN'}")
+            lines.append("")
+            lines.append(f"Timestamp: {res.timestamp_value or 'UNKNOWN'}")
+            lines.append(f"TSA: {res.timestamp_tsa_subject or 'UNKNOWN'}")
             if res.content_timestamp_value:
-                cert_lines.append(f"Content TS: {res.content_timestamp_value}")
-                cert_lines.append(f"Content TSA: {res.content_timestamp_tsa_subject or 'UNKNOWN'}")
+                lines.append(f"Content TS: {res.content_timestamp_value}")
+                lines.append(f"Content TSA: {res.content_timestamp_tsa_subject or 'UNKNOWN'}")
+        return lines
+
+    def clear_multi_tabs():
+        for tab_id in multi_inner.tabs():
+            multi_inner.forget(tab_id)
+
+    def show_result(res: Result):
+        nonlocal last_result
+        last_result = res
+        set_mode_single()
+        set_single_actions_enabled(True)
+
+        txt_human.configure(state="normal")
+        txt_human.delete("1.0", "end")
+        txt_human.insert("1.0", result_to_human(res))
+        txt_human.configure(state="disabled")
+
+        txt_json.configure(state="normal")
+        txt_json.delete("1.0", "end")
+        txt_json.insert("1.0", result_to_json(res))
+        txt_json.configure(state="disabled")
+
+        cert_lines = build_cert_lines(res)
         txt_cert.configure(state="normal")
         txt_cert.delete("1.0", "end")
         txt_cert.insert("1.0", "\n".join(cert_lines))
@@ -1968,8 +2683,142 @@ def run_gui() -> int:
         mark_log_tab(True)
 
         update_status(res.ok, "VALID" if res.ok else "INVALID")
-        btn_export.configure(state="normal")
 
+    def show_multi_results(items: List[Tuple[Result, Any]], pdf_path: Path):
+        nonlocal last_result
+        last_result = None
+        set_mode_multi()
+        set_single_actions_enabled(False)
+        clear_multi_tabs()
+
+        results = [r for r, _ in items]
+        status_parts = ["VALID" if r.ok else "INVALID" for r in results]
+        status_text = " - ".join(status_parts) if status_parts else "FĂRĂ SEMNĂTURI"
+        all_ok = all(r.ok for r in results) if results else False
+        any_ok = any(r.ok for r in results) if results else False
+        if all_ok:
+            overall_style = "StatusGood.TLabel"
+            update_status(True, status_text)
+        elif any_ok:
+            overall_style = "StatusWarn.TLabel"
+            update_status(None, status_text)
+        else:
+            overall_style = "StatusBad.TLabel"
+            update_status(False, status_text)
+        multi_status.configure(text=status_text, style=overall_style)
+
+        summary_lines: List[str] = []
+        for idx, res in enumerate(results, start=1):
+            subject = res.signer_subject or "UNKNOWN"
+            issuer = res.signer_issuer or "UNKNOWN"
+            policy = ", ".join(res.signer_policy_oids) if res.signer_policy_oids else "UNKNOWN"
+            ts_note = res.timestamp_value or res.content_timestamp_value or "—"
+            summary_lines.append(
+                f"Semnătura {idx}: {'VALID' if res.ok else 'INVALID'} | "
+                f"Subiect: {subject} | Issuer: {issuer} | Policy: {policy} | TS: {ts_note}"
+            )
+        multi_summary.configure(state="normal")
+        multi_summary.delete("1.0", "end")
+        if summary_lines:
+            multi_summary.insert("1.0", "\n".join(summary_lines))
+        multi_summary.configure(state="disabled")
+
+        def export_report_for_result(res: Result):
+            txt, js = export_report(pdf_path, res)
+            messagebox.showinfo(
+                "Export finalizat",
+                f"Raport salvat:\n\n{txt.name}\n{js.name}",
+            )
+
+        def export_all_reports():
+            for r in results:
+                export_report(pdf_path, r)
+            messagebox.showinfo(
+                "Export finalizat",
+                f"Au fost salvate {len(results)} rapoarte.",
+            )
+
+        def export_cert_for_sig(embedded_sig: Any, idx: int):
+            default_name = f"{pdf_path.stem}.sig{idx}.cer"
+            dest = filedialog.asksaveasfilename(
+                title="Salvează certificatul semnatarului",
+                defaultextension=".cer",
+                initialfile=default_name,
+                filetypes=[("Certificate", "*.cer"), ("All files", "*.*")],
+            )
+            if not dest:
+                return
+            ok = _save_signer_cert_bytes_from_embedded(embedded_sig, Path(dest))
+            if ok:
+                messagebox.showinfo("Export reușit", f"Certificat salvat:\n{dest}")
+            else:
+                messagebox.showerror("Eroare", "Nu am putut extrage certificatul semnatarului.")
+
+        def copy_cert_for_result(res: Result):
+            lines = build_cert_lines(res)
+            root.clipboard_clear()
+            root.clipboard_append("\n".join(lines))
+            root.update()
+
+        btn_export_all.configure(command=export_all_reports)
+
+        for idx, (res, embedded_sig) in enumerate(items, start=1):
+            sig_tab = ttk.Frame(multi_inner)
+            multi_inner.add(sig_tab, text=f"Semnătura {idx}")
+
+            sig_actions = ttk.Frame(sig_tab)
+            sig_actions.pack(fill="x", padx=6, pady=(6, 0))
+            ttk.Button(
+                sig_actions,
+                text="Salvează raport",
+                width=18,
+                command=lambda r=res: export_report_for_result(r),
+            ).pack(side="left")
+            ttk.Button(
+                sig_actions,
+                text="Copiază detalii certificat",
+                width=24,
+                command=lambda r=res: copy_cert_for_result(r),
+            ).pack(side="left", padx=(8, 0))
+            ttk.Button(
+                sig_actions,
+                text="Exportă certificat (.cer)",
+                width=22,
+                command=lambda s=embedded_sig, i=idx: export_cert_for_sig(s, i),
+            ).pack(side="left", padx=(8, 0))
+
+            sig_inner = ttk.Notebook(sig_tab)
+            sig_inner.pack(fill="both", expand=True)
+
+            sig_human = ttk.Frame(sig_inner)
+            sig_json = ttk.Frame(sig_inner)
+            sig_cert = ttk.Frame(sig_inner)
+            sig_log = ttk.Frame(sig_inner)
+            sig_inner.add(sig_human, text="Rezumat (uman)")
+            sig_inner.add(sig_json, text="JSON (raw)")
+            sig_inner.add(sig_cert, text="Certificat")
+            sig_inner.add(sig_log, text="Log")
+
+            txt_sig_human = ScrolledText(sig_human, wrap="word")
+            txt_sig_human.pack(fill="both", expand=True, padx=6, pady=6)
+            txt_sig_human.insert("1.0", result_to_human(res))
+            txt_sig_human.configure(state="disabled", font=("Consolas", 11))
+
+            txt_sig_json = ScrolledText(sig_json, wrap="word")
+            txt_sig_json.pack(fill="both", expand=True, padx=6, pady=6)
+            txt_sig_json.insert("1.0", result_to_json(res))
+            txt_sig_json.configure(state="disabled", font=("Consolas", 10))
+
+            txt_sig_cert = ScrolledText(sig_cert, wrap="word")
+            txt_sig_cert.pack(fill="both", expand=True, padx=6, pady=6)
+            txt_sig_cert.insert("1.0", "\n".join(build_cert_lines(res)))
+            txt_sig_cert.configure(state="disabled", font=("Consolas", 10))
+
+            txt_sig_log = ScrolledText(sig_log, wrap="word")
+            txt_sig_log.pack(fill="both", expand=True, padx=6, pady=6)
+            if log_lines:
+                txt_sig_log.insert("1.0", "\n".join(log_lines))
+            txt_sig_log.configure(state="disabled", font=("Consolas", 10))
     def do_validate():
         pdf = pdf_var.get().strip()
         if not pdf:
@@ -1989,17 +2838,143 @@ def run_gui() -> int:
 
         update_status(None, "Validare în curs…")
 
+        allow_fetching = allow_fetch_var.get()
+        revocation_mode = revocation_mode_var.get().strip() or "soft-fail"
+        strict_issuer = strict_issuer_var.get()
+        hard_mode = hard_mode_var.get()
+        strict_eci = strict_eci_var.get()
+        local_crls = load_local_crls() if local_crl_var.get() else None
+        require_timestamp = timestamp_check_var.get()
+
+        if strict_eci:
+            allow_fetching = True
+            revocation_mode = "require"
+            strict_issuer = True
+        if not allow_fetching and not local_crls:
+            revocation_mode = "soft-fail"
+
+        try:
+            with pdf_path.open("rb") as f:
+                r = PdfFileReader(f)
+                sigs = r.embedded_signatures or []
+                sig_count = len(sigs)
+
+                if sig_count > 1:
+                    root_cert = _load_cert_any(root_path)
+                    sub_cert = _load_cert_any(sub_path)
+                    root_fp = _cert_sha256_der(root_cert)
+                    sub_fp = _cert_sha256_der(sub_cert)
+
+                    if strict_eci:
+                        if root_fp not in MAI_ROOT_SHA256:
+                            base = Result(
+                                ok=False,
+                                message="STRICT_ECI_ROOT_NOT_MAI",
+                                signature_count=sig_count,
+                                root_cert_sha256=root_fp,
+                                sub_cert_sha256=sub_fp,
+                                strict_issuer_enabled=strict_issuer,
+                                hard_mode_enabled=hard_mode,
+                                allow_fetching_enabled=allow_fetching,
+                                revocation_mode=revocation_mode,
+                                local_crl_enabled=bool(local_crls),
+                                local_crl_count=len(local_crls or []),
+                                timestamp_check_enabled=bool(require_timestamp),
+                                timestamp_ok=None,
+                                timestamp_info=None,
+                                strict_eci_enabled=True,
+                                strict_eci_ok=False,
+                                strict_eci_notes=["Root CA nu corespunde amprentei MAI."],
+                                used_root_path=str(root_path),
+                                used_sub_path=str(sub_path),
+                            )
+                            show_multi_results(
+                                [(Result(**base.__dict__), sig) for sig in sigs],
+                                pdf_path,
+                            )
+                            return
+                        if sub_fp not in MAI_SUB_SHA256:
+                            base = Result(
+                                ok=False,
+                                message="STRICT_ECI_SUB_NOT_MAI",
+                                signature_count=sig_count,
+                                root_cert_sha256=root_fp,
+                                sub_cert_sha256=sub_fp,
+                                strict_issuer_enabled=strict_issuer,
+                                hard_mode_enabled=hard_mode,
+                                allow_fetching_enabled=allow_fetching,
+                                revocation_mode=revocation_mode,
+                                local_crl_enabled=bool(local_crls),
+                                local_crl_count=len(local_crls or []),
+                                timestamp_check_enabled=bool(require_timestamp),
+                                timestamp_ok=None,
+                                timestamp_info=None,
+                                strict_eci_enabled=True,
+                                strict_eci_ok=False,
+                                strict_eci_notes=["Sub CA nu corespunde amprentei MAI."],
+                                used_root_path=str(root_path),
+                                used_sub_path=str(sub_path),
+                            )
+                            show_multi_results(
+                                [(Result(**base.__dict__), sig) for sig in sigs],
+                                pdf_path,
+                            )
+                            return
+
+                    items: List[Tuple[Result, Any]] = []
+                    for idx, embedded_sig in enumerate(sigs, start=1):
+                        log_lines.append(f"=== Semnătura {idx} ===")
+                        res = validate_embedded_signature_against_two_cas(
+                                embedded_sig=embedded_sig,
+                                signature_count=sig_count,
+                                root_cert=root_cert,
+                                sub_cert=sub_cert,
+                                root_fp=root_fp,
+                                sub_fp=sub_fp,
+                                allow_fetching=allow_fetching,
+                                revocation_mode=revocation_mode,
+                                strict_issuer=strict_issuer,
+                                hard_mode=hard_mode,
+                                strict_eci=strict_eci,
+                                local_crls=local_crls,
+                                require_timestamp=require_timestamp,
+                                root_ca_path=root_path,
+                                sub_ca_path=sub_path,
+                            )
+                        items.append((res, embedded_sig))
+
+                    show_multi_results(items, pdf_path)
+                    return
+        except Exception as e:
+            res = Result(
+                ok=False,
+                message=f"EXCEPTION: {type(e).__name__}: {e}",
+                signature_count=0,
+                strict_issuer_enabled=bool(strict_issuer),
+                hard_mode_enabled=bool(hard_mode),
+                allow_fetching_enabled=bool(allow_fetching),
+                revocation_mode=str(revocation_mode),
+                local_crl_enabled=bool(local_crls),
+                local_crl_count=len(local_crls or []),
+                timestamp_check_enabled=bool(require_timestamp),
+                strict_eci_enabled=bool(strict_eci),
+                used_root_path=str(root_path),
+                used_sub_path=str(sub_path),
+            )
+            show_result(res)
+            return
+
         res = validate_pdf_against_two_cas(
             pdf_path=pdf_path,
             root_ca_path=root_path,
             sub_ca_path=sub_path,
-            allow_fetching=allow_fetch_var.get(),
-            revocation_mode=revocation_mode_var.get().strip() or "soft-fail",
-            strict_issuer=strict_issuer_var.get(),
-            hard_mode=hard_mode_var.get(),
-            strict_eci=strict_eci_var.get(),
-            local_crls=load_local_crls() if local_crl_var.get() else None,
-            require_timestamp=timestamp_check_var.get(),
+            allow_fetching=allow_fetching,
+            revocation_mode=revocation_mode,
+            strict_issuer=strict_issuer,
+            hard_mode=hard_mode,
+            strict_eci=strict_eci,
+            local_crls=local_crls,
+            require_timestamp=require_timestamp,
         )
 
         show_result(res)
@@ -2018,6 +2993,8 @@ def run_gui() -> int:
     btn_export.configure(command=do_export)
     btn_copy_cert.configure(command=lambda: copy_signer_details())
     btn_export_cert.configure(command=lambda: export_signer_cert())
+    set_mode_single()
+    set_single_actions_enabled(False)
 
     # Size window to fit left column content by default
     try:
