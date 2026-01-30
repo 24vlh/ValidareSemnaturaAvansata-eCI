@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-
 from __future__ import annotations
-from PIL import Image, ImageTk
 
 import argparse
 import json
 import sys
 import hashlib
+import os
+import subprocess
+import webbrowser
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Any, Dict
+from PIL import Image, ImageTk
 
 # GUI is optional (stdlib)
 try:
@@ -38,6 +41,30 @@ def resource_path(rel):
     if hasattr(sys, "_MEIPASS"):
         return Path(sys._MEIPASS) / rel
     return Path(__file__).resolve().parent / rel
+
+def open_url(url: str) -> bool:
+    """
+    Best-effort URL opener for Windows-packaged apps.
+    Returns True if a method reports success.
+    """
+    try:
+        if webbrowser.open(url, new=2):
+            return True
+    except Exception:
+        pass
+
+    # Windows fallbacks
+    try:
+        os.startfile(url)  # type: ignore[attr-defined]
+        return True
+    except Exception:
+        pass
+
+    try:
+        subprocess.Popen(["cmd", "/c", "start", "", url], shell=False)
+        return True
+    except Exception:
+        return False
 
 @dataclass
 class Result:
@@ -322,9 +349,45 @@ def run_gui(default_root: Optional[Path], default_sub: Optional[Path]) -> int:
     logo_img = logo_img.resize((120, 120))
     logo = ImageTk.PhotoImage(logo_img)
 
-    logo_label = tk.Label(frm, image=logo)
+    # Header container
+    header = tk.Frame(frm)
+    header.pack(fill="x", pady=(0, 12))
+
+    # Logo (left)
+    logo_label = tk.Label(header, image=logo)
     logo_label.image = logo  # keep reference
-    logo_label.pack(pady=(0, 10))
+    logo_label.pack(side="left", padx=(0, 12))
+
+    # Text block (right of logo)
+    text_block = tk.Frame(header)
+    text_block.pack(side="left", fill="y")
+
+    brand_label = tk.Label(
+        text_block,
+        text="vlah.io",
+        font=("Segoe UI", 14),
+        fg="#1a73e8",          # subtle link blue
+        cursor="hand2",
+        anchor="w"
+    )
+    brand_label.pack(anchor="w")
+
+    def _open_brand(_e=None):
+        ok = open_url("https://vlah.io")
+        if not ok:
+            messagebox.showerror("Eroare", "Nu am putut deschide link-ul în browser.\nVerifică browserul implicit din Windows.")
+
+    brand_label.bind("<Button-1>", _open_brand)
+    brand_label.bind("<Enter>", lambda e: brand_label.config(fg="#174ea6"))
+    brand_label.bind("<Leave>", lambda e: brand_label.config(fg="#1a73e8"))
+
+    tk.Label(
+        text_block,
+        text="source: @24vlh · GitHub",
+        font=("Segoe UI", 9),
+        fg="gray",
+        anchor="w"
+    ).pack(anchor="w")
 
     def row(label, var, pick_cmd):
         r = tk.Frame(frm)
