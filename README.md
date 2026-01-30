@@ -109,3 +109,49 @@ Aplicația poate fi folosită și din linia de comandă:
 
 ```bash
 ValidareSemnatura-eCI.exe --pdf document.pdf --root root.cer --sub sub.cer
+
+## Descărcare și utilizare (Windows)
+
+### 1. Descarcă aplicația
+Descarcă prima versiune oficială de aici:
+
+👉 https://github.com/24vlh/Validare-Sematura-eCI/releases/download/v1.0.0/ValidareSemnatura-eCI.zip
+
+---
+
+### 2. Dezarhivează
+– click dreapta pe fișierul ZIP  
+– **Extract All / Extrage tot**  
+– alege un folder (ex: Desktop)
+
+---
+
+### 3. Rulează aplicația
+În folderul extras:
+- dublu-click pe **ValidareSemnatura-eCI.exe**
+- aplicația pornește direct (nu necesită instalare)
+
+---
+
+### 4. Dacă apare avertisment Windows
+Este normal pentru aplicații portabile ne-semnate:
+
+1. Click **More info / Mai multe informații**
+2. Click **Run anyway / Rulează oricum**
+
+Aplicația este locală, offline și nu modifică sistemul.
+
+---
+
+### 5. Folosire rapidă
+1. Selectează PDF-ul semnat
+2. Selectează certificatele Root + Sub CA MAI
+3. Apasă **Validează**
+4. Primești rezultatul instant
+
+---
+
+### Dezinstalare
+Șterge pur și simplu folderul.  
+Nu rămâne nimic instalat în sistem.
+
