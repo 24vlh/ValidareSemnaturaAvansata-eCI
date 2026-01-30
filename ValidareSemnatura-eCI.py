@@ -45,15 +45,14 @@ from asn1crypto import cms as asn1_cms
 # Versioning / Identity
 # =============================================================================
 APP_NAME = "Validare Semnătură Avansată cu eCI"
-APP_VERSION = "2.0.0"
-APP_BUILD = datetime.utcnow().strftime("%Y-%m-%d")
+APP_VERSION = "2.0.1"
+APP_BUILD = "2026-01-31"
 APP_AUTHOR = "vlah.io • @24vlh"
 
 APP_CHANGELOG = [
-    ("2.0.0", "Rebrand UI + linkuri autor"),
-    ("1.2.0", "Export raport (TXT+JSON) + UI refinements"),
-    ("1.1.0", "Hard mode + rezultat uman + UI premium + versioning vizibil"),
-    ("1.0.0", "Validare tehnică: integritate, criptografie, lanț Root/Sub MAI + strict issuer + GUI/CLI"),
+    ("2.0.1", "Curățare text/UI + corecții micro (multi + audit)"),
+    ("2.0.0", "Multi semnături, verificări criptografice extinse, opțiuni + taburi noi"),
+    ("1.0.0", "Validare tehnică: integritate, criptografie, lanț Root/Sub MAI + emitent strict + GUI/CLI"),
 ]
 
 # =============================================================================
@@ -221,11 +220,11 @@ def result_to_human(res: Result) -> str:
         lines.append(f"  – Content TSA: {res.content_timestamp_tsa_subject}")
     if res.timestamp_check_enabled and res.timestamp_ok is False:
         lines.append("  – Atenție: timestamp prezent dar invalid sau netrusted.")
-    lines.append(f"• Strict issuer (pin Sub CA): {yn(res.strict_issuer_enabled)}")
+    lines.append(f"• Emitent strict (pin Sub CA): {yn(res.strict_issuer_enabled)}")
     if res.strict_issuer_enabled:
-        lines.append(f"  – Issuer name match: {yn(res.strict_issuer_name_match)}")
-        lines.append(f"  – Issuer signature verified: {yn(res.strict_issuer_verified_by_signature)}")
-    lines.append(f"• Hard mode (reject extra embedded certs): {yn(res.hard_mode_enabled)}")
+        lines.append(f"  – Nume emitent corect: {yn(res.strict_issuer_name_match)}")
+        lines.append(f"  – Semnătura emitentului verificată: {yn(res.strict_issuer_verified_by_signature)}")
+    lines.append(f"• Hard mode (respinge certificate embedded suplimentare): {yn(res.hard_mode_enabled)}")
     if res.hard_mode_enabled:
         lines.append(f"  – Hard mode OK: {yn(res.hard_mode_ok)}")
         if res.hard_mode_extra_certs:
@@ -242,7 +241,7 @@ def result_to_human(res: Result) -> str:
 
     lines.append("Identitate certificat semnatar (informativ):")
     lines.append(f"• Subject: {res.signer_subject or 'UNKNOWN'}")
-    lines.append(f"• Issuer: {res.signer_issuer or 'UNKNOWN'}")
+    lines.append(f"• Emitent: {res.signer_issuer or 'UNKNOWN'}")
     lines.append(f"• Signer SHA256: {res.signer_cert_sha256 or 'UNKNOWN'}")
     if res.signer_not_before:
         lines.append(f"• Not Before: {res.signer_not_before}")
@@ -2280,7 +2279,7 @@ def run_gui() -> int:
     btn_pdf.pack(side="left")
     info_pdf = ttk.Label(row_pdf, text="ⓘ", style="Muted.TLabel", cursor="question_arrow")
     info_pdf.pack(side="left", padx=(6, 0))
-    ToolTip(info_pdf, "Alege PDF-ul semnat. Regula: exact 1 semnătură.")
+    ToolTip(info_pdf, "Alege PDF-ul semnat.")
 
     # Root row
     row_root = ttk.Frame(files)
@@ -2325,7 +2324,7 @@ def run_gui() -> int:
     sub_fp_label = ttk.Label(files, text="Sub  SHA256: UNKNOWN", style="Muted.TLabel")
     fp_actions = ttk.Frame(files)
     fp_actions.pack(anchor="w", padx=(10, 0), pady=(0, 6))
-    btn_copy_fps = ttk.Button(fp_actions, text="Copiază amprente", command=copy_fingerprints, width=16)
+    btn_copy_fps = ttk.Button(fp_actions, text="Copiază amprentele", command=copy_fingerprints, width=18)
     btn_copy_fps.pack(side="left")
     btn_open_bundle = ttk.Button(
         fp_actions,
@@ -2366,7 +2365,7 @@ def run_gui() -> int:
 
     strict_eci_cb = ttk.Checkbutton(
         opts,
-        text="Strict eCI (MAI pin + revocare obligatorie + issuer)",
+        text="Strict eCI (pin MAI + revocare obligatorie + emitent strict)",
         variable=strict_eci_var,
         command=apply_strict_eci,
     )
@@ -2421,7 +2420,7 @@ def run_gui() -> int:
 
     strict_cb = ttk.Checkbutton(
         opts,
-        text="Strict issuer (pin Sub CA – verificare criptografică)",
+        text="Emitent strict (pin Sub CA – verificare criptografică)",
         variable=strict_issuer_var,
     )
     strict_cb.pack(anchor="w", pady=3)
@@ -2558,11 +2557,11 @@ def run_gui() -> int:
         status = signer_validity_status(last_result)
         lines = [
             f"Subject: {last_result.signer_subject or 'UNKNOWN'}",
-            f"Issuer: {last_result.signer_issuer or 'UNKNOWN'}",
+            f"Emitent: {last_result.signer_issuer or 'UNKNOWN'}",
             f"SHA256: {last_result.signer_cert_sha256 or 'UNKNOWN'}",
             f"Not Before: {last_result.signer_not_before or 'UNKNOWN'}",
             f"Not After: {last_result.signer_not_after or 'UNKNOWN'}",
-            f"Status: {status}",
+            f"Stare: {status}",
             f"Key Usage: {last_result.signer_key_usage or 'UNKNOWN'}",
             f"EKU OIDs: {', '.join(last_result.signer_eku_oids) if last_result.signer_eku_oids else 'UNKNOWN'}",
             f"Policy OIDs: {', '.join(last_result.signer_policy_oids) if last_result.signer_policy_oids else 'UNKNOWN'}",
@@ -2632,11 +2631,11 @@ def run_gui() -> int:
     def build_cert_lines(res: Result) -> List[str]:
         lines = [
             f"Subject: {res.signer_subject or 'UNKNOWN'}",
-            f"Issuer: {res.signer_issuer or 'UNKNOWN'}",
+            f"Emitent: {res.signer_issuer or 'UNKNOWN'}",
             f"SHA256: {res.signer_cert_sha256 or 'UNKNOWN'}",
             f"Not Before: {res.signer_not_before or 'UNKNOWN'}",
             f"Not After: {res.signer_not_after or 'UNKNOWN'}",
-            f"Status: {signer_validity_status(res)}",
+            f"Stare: {signer_validity_status(res)}",
             f"Key Usage: {res.signer_key_usage or 'UNKNOWN'}",
             f"EKU OIDs: {', '.join(res.signer_eku_oids) if res.signer_eku_oids else 'UNKNOWN'}",
             f"Policy OIDs: {', '.join(res.signer_policy_oids) if res.signer_policy_oids else 'UNKNOWN'}",
@@ -2676,7 +2675,7 @@ def run_gui() -> int:
         txt_cert.insert("1.0", "\n".join(cert_lines))
         txt_cert.configure(state="disabled")
 
-        log_lines.append("Signer certificate details:")
+        log_lines.append("Detalii certificat semnatar:")
         log_lines.extend(cert_lines)
 
         refresh_log_view()
@@ -2715,7 +2714,7 @@ def run_gui() -> int:
             ts_note = res.timestamp_value or res.content_timestamp_value or "—"
             summary_lines.append(
                 f"Semnătura {idx}: {'VALID' if res.ok else 'INVALID'} | "
-                f"Subiect: {subject} | Issuer: {issuer} | Policy: {policy} | TS: {ts_note}"
+                f"Subiect: {subject} | Emitent: {issuer} | Policy OID: {policy} | Timestamp: {ts_note}"
             )
         multi_summary.configure(state="normal")
         multi_summary.delete("1.0", "end")

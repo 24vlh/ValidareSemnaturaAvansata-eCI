@@ -44,7 +44,7 @@ Concluzie: rezultatele sunt corecte doar dacă **toate semnăturile** sunt aște
    - PDF-ul semnat
    - certificatul Root CA
    - certificatul Sub CA
-4. (Opțional) bifează opțiunile dorite (rețea, revocare, strict issuer, strict eCI, CRL local, timestamp).
+4. (Opțional) bifează opțiunile dorite (rețea, revocare, emitent strict, strict eCI, CRL local, timestamp).
 5. Apasă **Validează**
 6. Primești rezultatul **VALID / INVALID + detalii complete**
    - tabul **Certificat** afișează Subject/Issuer/SHA256 + EKU/Policy OIDs
@@ -84,7 +84,7 @@ Concluzie: rezultatele sunt corecte doar dacă **toate semnăturile** sunt aște
   – verificare revocare fără internet (dacă ai CRL‑urile local)
 - **Mod revocare**
   – soft‑fail / hard‑fail / require (se aplică atunci când rețeaua este activă)
-- **Strict issuer (pin Sub CA)**
+- **Emitent strict (pin Sub CA)**
   – respinge semnătura dacă emitentul nu este exact Sub CA-ul furnizat
 - **Mod strict eCI**
   – pin Root/Sub la amprentele MAI + revocare obligatorie
@@ -148,7 +148,7 @@ Pentru output JSON:
 ### 1. Descarcă aplicația
 Descarcă prima versiune oficială de aici:
 
-👉 https://github.com/24vlh/Validare-Sematura-eCI/releases/download/v2.0.0/ValidareSemnatura-eCI-v2.0.0.zip
+👉 https://github.com/24vlh/Validare-Sematura-eCI/releases/download/v2.0.1/ValidareSemnatura-eCI-v2.0.1.zip
 
 ---
 
@@ -205,7 +205,7 @@ Este un **instrument de verificare tehnică**, creat pentru claritate, control �
 Modul strict eCI activează automat:
 - pinning Root/Sub la amprentele oficiale MAI
 - revocare obligatorie (CRL/OCSP)
-- strict issuer (pin Sub CA)
+- emitent strict (pin Sub CA)
 
 Opțional, poți configura filtrarea EKU/Policy OID direct în cod (`ECI_REQUIRED_EKU_OIDS`, `ECI_REQUIRED_POLICY_OIDS`).
 
@@ -242,42 +242,42 @@ Poți recalcula aceste hash-uri local (cu `certutil`, `sha256sum`, `7zip`, etc.)
 
 ---
 
-### ValidareSemnatura-eCI-v2.0.0.zip
+### ValidareSemnatura-eCI-v2.0.1.zip
 
-**Dimensiune:** 29,817,042 bytes
-**Data build:** 31/01/2026 01:35:28
+**Dimensiune:** 29,815,744 bytes
+**Data build:** 31/01/2026 01:56:16
 
 | Algoritm | Hash |
 |---------|------|
-| MD5 | `b671f280046647e3a27fb0517b56b320` |
-| SHA1 | `c0942c822d53cd37b53aba0e09191a75e7168928` |
-| CRC32 | `8737187b` |
-| SHA256 | `2678f793648c76311624a17ead5772836621092f3cc10ecf1749cfb586654fad` |
-| SHA512 | `53054daa62932a2683f91653bfd740819f22f1108175ce37fb96a57e931fe1cb1bae297cad0114ff04ec762060a2e98527efeced0b8b26df860d027fb0bcd374` |
-| SHA3-256 | `6f228efdf1e730baaadf81c81d352614d23b7abdc45508c9974785957444d49140518bce88fd4a6ff2acf19434ebcf3d` |
+| MD5 | `9478ed29809583a3bea9eae38993d663` |
+| SHA1 | `a6e1f46207834acb8b35ed023220a2350aafd26f` |
+| CRC32 | `099c216b` |
+| SHA256 | `cd567fdec4d3129f3e01d8d855a70c5cb28c483272a8a5ead37d7a7796278126` |
+| SHA512 | `70d2e37cdd53d94edb2123de9b79eddb545b6a19151c7f0617ebdd6a02607b2231fd3d12e5f09460a81dd5a0c1a1ec4607a2df76f41b2bd2d831b782442b2554` |
+| SHA3-256 | `1a5c5d291258d34575519c07e28ebf356253b12b8074fd5e2724592962c18810470437a13f51132d1c7476c21e71169b` |
 
 ---
 
-### ValidareSemnatura-eCI.exe v2.0.0
+### ValidareSemnatura-eCI.exe v2.0.1
 
-**Dimensiune:** 6,876,487 bytes
-**Data build:** 31/01/2026 01:35:19
+**Dimensiune:** 6,876,439 bytes
+**Data build:** 31/01/2026 01:56:09
 
 | Algoritm | Hash |
 |---------|------|
-| MD5 | `80a9dde8f2d766680925522156f554c3` |
-| SHA1 | `922ad50a2645f2f52441a084a88d1f4bdf6fd61c` |
-| CRC32 | `76626c4e` |
-| SHA256 | `e78694f5fcf7d658fbeed17f15193974f5fd7c24ceb3e148b6764a9c2324d0d4` |
-| SHA512 | `ab1998827accd0a344521bfdc8606fb950370a14342f8594a342f1885cf5d4233c719c4a0c72550fb993e66209f78e49a29ade889a7eee7c0b124c3b41cadb22` |
-| SHA3-256 | `a76be8bd37224c6c7f190719561da2aea5fb504fc87c05cca9dc8a131f8d3ba6d9362ad4a827f29011e79070109dcea2` |
+| MD5 | `f344f832cf30e62015545f9c7f951d70` |
+| SHA1 | `02af23a66c520e3641d869f9d9a1d37a4848eba1` |
+| CRC32 | `52b7194d` |
+| SHA256 | `b6e9038dd3d284b59b7af9d7138938b02b7e739819c3a2e8ba307e501f3f019b` |
+| SHA512 | `50dcacca88eca3dd3458bf8b984b41853c7a749410eee2d443b01a62fd49e29db22c9b5953f2e952fca7c0ecac46c443ebcbc0ac4e50de31b9e2f6f669066e22` |
+| SHA3-256 | `8416a3ea5c906a99fd029909393d2c4f7bd678c398bdf37c7dfcc2e37595b88bbf881db65e4722d296d40066251f0a12` |
 
 ---
 
 ### Exemplu verificare pe Windows
 
 ```powershell
-certutil -hashfile ValidareSemnatura-eCI-v2.0.0.zip SHA256
+certutil -hashfile ValidareSemnatura-eCI-v2.0.1.zip SHA256
 certutil -hashfile ValidareSemnatura-eCI.exe SHA256
 ```
 
