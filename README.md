@@ -1,5 +1,7 @@
 # ValidareSemnatura-eCI (Windows)
 
+<img src="assets/sample.png" width="600" />
+
 ## Ce este această aplicație
 
 **ValidareSemnatura-eCI** este o aplicație Windows portabilă (executabil `.exe`) care verifică dacă un document PDF a fost semnat corect cu **certificatul de semnătură electronică avansată din Cartea Electronică de Identitate (CEI)**, emis de MAI.
