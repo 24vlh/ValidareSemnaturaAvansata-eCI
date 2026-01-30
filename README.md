@@ -197,3 +197,56 @@ Un document semnat electronic trebuie să poată fi verificat:
 
 Această aplicație face exact asta.  
 **Nimic mai mult. Nimic mai puțin.**
+
+---
+
+## Verificare integritate & autenticitate fișiere
+
+Pentru a putea verifica că arhiva și executabilul provin **exact din build-ul publicat de mine** și nu au fost modificate, mai jos sunt amprentele criptografice complete ale fișierelor.
+
+Poți recalcula aceste hash-uri local (cu `certutil`, `sha256sum`, `7zip`, etc.) și compara rezultatul.
+
+---
+
+### ValidareSemnatura-eCI.zip
+
+**Dimensiune:** 29,572,547 bytes  
+**Data build:** 30/01/2026 13:36:29  
+
+| Algoritm | Hash |
+|---------|------|
+| MD5 | `eacff72f83b5b5636728554339d274d3` |
+| SHA1 | `7b619c3cc6b788e751af4355246e39b85314fd69` |
+| CRC32 | `ff05cfe2` |
+| SHA256 | `3afac61c640af2443be99fce9892675ba8d98dbe2c071314a6951dfbbfafed1a` |
+| SHA512 | `742696d57f70a2f06c9889396ef7d6f171df55b6d021531837057451564383885b4d6664d2cbed0500ef8b5bec99505910f31bfa510e69130305917ca0e2f626` |
+| SHA3-256 | `bd99b5235098d886c8e8b169157769d14c2faabcfb1a643488223c80991f7af5` |
+
+---
+
+### ValidareSemnatura-eCI.exe v1.0.0
+
+**Dimensiune:** 6,811,194 bytes  
+**Data build:** 30/01/2026 13:35:56  
+
+| Algoritm | Hash |
+|---------|------|
+| MD5 | `d9c55d8412314fdbe29a69260ea26749` |
+| SHA1 | `68e15836351beeafa326fe075ffd83a73e20a1d0` |
+| CRC32 | `d3bcd084` |
+| SHA256 | `f5e4cd2ca8ca1dce0528ff439246e22264944b384269b588c1683f0cd5f080d9` |
+| SHA512 | `7c10041f342661f820d0ccaab3069bb21055cc53613a0ea023922c4d2fcb226a50cc06516c18dab6650dd115a1d932d9324606501a3a2614ec708e16ea0becb4` |
+| SHA3-256 | `35b9c63e0df0d5610496cbb2ab025e7302eb98898b5515827850129814ecca53` |
+
+---
+
+### Exemplu verificare pe Windows
+
+```powershell
+certutil -hashfile ValidareSemnatura-eCI.zip SHA256
+certutil -hashfile ValidareSemnatura-eCI.exe SHA256
+```
+
+**Notă:**
+Aceste hash-uri sunt publicate pentru transparență și verificabilitate.
+Dacă nu se potrivesc, **nu rula aplicația** și descarcă din nou arhiva doar din secțiunea oficială GitHub: https://github.com/24vlh/Validare-Sematura-eCI/releases.
