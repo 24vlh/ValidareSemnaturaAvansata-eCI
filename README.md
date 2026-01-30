@@ -109,6 +109,15 @@ Aplicația poate fi folosită și din linia de comandă:
 
 ```bash
 ValidareSemnatura-eCI.exe --pdf document.pdf --root root.cer --sub sub.cer
+```
+
+Pentru output JSON:
+
+```
+--json
+```
+
+---
 
 ## Descărcare și utilizare (Windows)
 
@@ -155,3 +164,36 @@ Aplicația este locală, offline și nu modifică sistemul.
 Șterge pur și simplu folderul.  
 Nu rămâne nimic instalat în sistem.
 
+## Limitări (intenționate)
+
+Aceasta **NU** este:
+- aplicație de producție
+- aplicație certificată
+- aplicație juridică oficială
+- înlocuitor pentru servicii de încredere calificate
+- instrument de autentificare a persoanei
+
+Este un **instrument de verificare tehnică**, creat pentru claritate, control și transparență.
+
+---
+
+## Disclaimer
+
+Această aplicație este oferită **ca utilitar tehnic de ajutor**, fără garanții explicite sau implicite.  
+Rezultatul este informativ și nu substituie evaluarea juridică sau procedurală oficială.
+
+Folosirea aplicației este pe propria răspundere.
+
+---
+
+## Filosofie
+
+Un document semnat electronic trebuie să poată fi verificat:
+- local
+- independent
+- fără cont
+- fără furnizor
+- fără magie
+
+Această aplicație face exact asta.  
+**Nimic mai mult. Nimic mai puțin.**
