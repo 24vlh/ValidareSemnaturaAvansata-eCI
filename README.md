@@ -161,7 +161,7 @@ Notă: `--no-stdout` necesită `--output`.
 ### 1. Descarcă aplicația
 Descarcă prima versiune oficială de aici:
 
-👉 https://github.com/24vlh/Validare-Sematura-eCI/releases/download/v2.0.1/ValidareSemnatura-eCI-v2.0.1.zip
+👉 https://github.com/24vlh/Validare-Sematura-eCI/releases/download/v2.0.2/ValidareSemnatura-eCI-v2.0.2-portable-folder-build.zip
 
 ---
 
