@@ -271,7 +271,7 @@ Poți recalcula aceste hash-uri local (cu `certutil`, `sha256sum`, `7zip`, etc.)
 
 ---
 
-### ValidareSemnatura-eCI-v2.0.2-portable-zip.zip
+### ValidareSemnatura-eCI-v2.0.2-portable-folder-build.zip
 
 **Dimensiune:** 29,822,438 bytes
 **Data build:** 31/01/2026 10:11:25
@@ -309,7 +309,7 @@ Notă: această arhivă ZIP conține **varianta folder build** (executabilul + d
 
 ```powershell
 certutil -hashfile ValidareSemnatura-eCI-v2.0.2-portable.exe SHA256
-certutil -hashfile ValidareSemnatura-eCI-v2.0.2-portable-zip.zip SHA256
+certutil -hashfile ValidareSemnatura-eCI-v2.0.2-portable-folder-build.zip SHA256
 certutil -hashfile ValidareSemnatura-eCI.exe SHA256
 ```
 
