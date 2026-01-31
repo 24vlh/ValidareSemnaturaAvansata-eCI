@@ -141,6 +141,19 @@ Pentru output JSON:
 --json
 ```
 
+Pentru a salva output-ul într-un fișier:
+```
+--output raport.json
+```
+
+Notă: dacă folosești `--output` fără `--json`, fișierul va conține textul uman (identic cu cel afișat în consolă).
+
+Pentru a nu mai afișa output în consolă (doar în fișier):
+```
+--no-stdout
+```
+Notă: `--no-stdout` necesită `--output`.
+
 ---
 
 ## Descărcare și utilizare (Windows)
@@ -242,42 +255,61 @@ Poți recalcula aceste hash-uri local (cu `certutil`, `sha256sum`, `7zip`, etc.)
 
 ---
 
-### ValidareSemnatura-eCI-v2.0.1.zip
+### ValidareSemnatura-eCI-v2.0.2-portable.exe (one-file build)
 
-**Dimensiune:** 29,815,744 bytes
-**Data build:** 31/01/2026 01:56:16
+**Dimensiune:** 29,546,746 bytes
+**Data build:** 31/01/2026 10:10:47
 
 | Algoritm | Hash |
 |---------|------|
-| MD5 | `9478ed29809583a3bea9eae38993d663` |
-| SHA1 | `a6e1f46207834acb8b35ed023220a2350aafd26f` |
-| CRC32 | `099c216b` |
-| SHA256 | `cd567fdec4d3129f3e01d8d855a70c5cb28c483272a8a5ead37d7a7796278126` |
-| SHA512 | `70d2e37cdd53d94edb2123de9b79eddb545b6a19151c7f0617ebdd6a02607b2231fd3d12e5f09460a81dd5a0c1a1ec4607a2df76f41b2bd2d831b782442b2554` |
-| SHA3-256 | `1a5c5d291258d34575519c07e28ebf356253b12b8074fd5e2724592962c18810470437a13f51132d1c7476c21e71169b` |
+| MD5 | `adf366b807cd4f834a9b3dd2716eeedf` |
+| SHA1 | `123c6963e00594da33e2e6a638ea87030686ff87` |
+| CRC32 | `01387a30` |
+| SHA256 | `90095ba62842a31de3236b29eee2848f7b8a660ec8d217cfd950d949e1b43ead` |
+| SHA512 | `635ebaf24cdf458a83b8a205a604849806e6da7a2b8375a19a129bd1f780e38d56a805981f2705f5e2f752151003ea545c69c32211aafa611727c4ff34c25d20` |
+| SHA3-256 | `7fbb0520a4afe0f680e4b45fd6468a7aa8599bd107cb65b04177ed63e95df98267c4b18362468e8ec85712113d856899` |
 
 ---
 
-### ValidareSemnatura-eCI.exe v2.0.1
+### ValidareSemnatura-eCI-v2.0.2-portable-zip.zip
 
-**Dimensiune:** 6,876,439 bytes
-**Data build:** 31/01/2026 01:56:09
+**Dimensiune:** 29,822,438 bytes
+**Data build:** 31/01/2026 10:11:25
 
 | Algoritm | Hash |
 |---------|------|
-| MD5 | `f344f832cf30e62015545f9c7f951d70` |
-| SHA1 | `02af23a66c520e3641d869f9d9a1d37a4848eba1` |
-| CRC32 | `52b7194d` |
-| SHA256 | `b6e9038dd3d284b59b7af9d7138938b02b7e739819c3a2e8ba307e501f3f019b` |
-| SHA512 | `50dcacca88eca3dd3458bf8b984b41853c7a749410eee2d443b01a62fd49e29db22c9b5953f2e952fca7c0ecac46c443ebcbc0ac4e50de31b9e2f6f669066e22` |
-| SHA3-256 | `8416a3ea5c906a99fd029909393d2c4f7bd678c398bdf37c7dfcc2e37595b88bbf881db65e4722d296d40066251f0a12` |
+| MD5 | `870eb89376f543142e248e70abf33277` |
+| SHA1 | `89712ce3c7839db105bc003f007e188643544823` |
+| CRC32 | `17aee3c7` |
+| SHA256 | `dc8d254e2ff49663f616a54113364a388cf8fc812078792395eeac94d4dfc8ee` |
+| SHA512 | `3ccf0e6385a5f360003d2e19565773b4af531e497cdedcf86a7b8ccb3e4f760da6a7835eb88845b6488b16e121ebf3fd4579f0983545d88bd3ebeaddba3e562f` |
+| SHA3-256 | `f3e21a9c2957cf7941341f28cd3f96e00c7205b128fd90239e93a272fecdf2ae75e0f9bf942426fca51fa1e227b9d07e` |
+
+Notă: această arhivă ZIP conține **varianta folder build** (executabilul + dependențele din folder).
+
+---
+
+### ValidareSemnatura-eCI.exe v2.0.2 (folder build)
+
+**Dimensiune:** 6,880,569 bytes
+**Data build:** 31/01/2026 10:10:29
+
+| Algoritm | Hash |
+|---------|------|
+| MD5 | `1ae752b23501a595c07c22b6f354e657` |
+| SHA1 | `695246cb24ede181b792d54037a92da95e0d551c` |
+| CRC32 | `076137e0` |
+| SHA256 | `a6631a486834d300cb213067d13f98a4b86be406cb5625a9f2ee1a5ed60ce067` |
+| SHA512 | `86791c8226c2bf37a31f7a7f67021ca3b08a3c314eaf0a98ba6505b24c69d42fb9daacb68ebef32b54a857a47e43bc5187681ce5154d06936087474f549fe5e9` |
+| SHA3-256 | `631039d3abc9b2fc1264f289b2ad17c19338604f86864a4d04263bfaf52d24fdbb0baa6ba9ea004e75bf5a53b452b098` |
 
 ---
 
 ### Exemplu verificare pe Windows
 
 ```powershell
-certutil -hashfile ValidareSemnatura-eCI-v2.0.1.zip SHA256
+certutil -hashfile ValidareSemnatura-eCI-v2.0.2-portable.exe SHA256
+certutil -hashfile ValidareSemnatura-eCI-v2.0.2-portable-zip.zip SHA256
 certutil -hashfile ValidareSemnatura-eCI.exe SHA256
 ```
 

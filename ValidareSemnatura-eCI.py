@@ -45,11 +45,12 @@ from asn1crypto import cms as asn1_cms
 # Versioning / Identity
 # =============================================================================
 APP_NAME = "Validare Semnătură Avansată cu eCI"
-APP_VERSION = "2.0.1"
+APP_VERSION = "2.0.2"
 APP_BUILD = "2026-01-31"
 APP_AUTHOR = "vlah.io • @24vlh"
 
 APP_CHANGELOG = [
+    ("2.0.2", "CLI implementat + output (--output, --no-stdout)"),
     ("2.0.1", "Curățare text/UI + corecții micro (multi + audit)"),
     ("2.0.0", "Multi semnături, verificări criptografice extinse, opțiuni + taburi noi"),
     ("1.0.0", "Validare tehnică: integritate, criptografie, lanț Root/Sub MAI + emitent strict + GUI/CLI"),
@@ -100,6 +101,247 @@ def open_url(url: str) -> bool:
 def now_stamp_local() -> str:
     return datetime.now().strftime("%Y%m%d-%H%M%S")
 
+
+# =============================================================================
+# CLI helpers
+# =============================================================================
+def bundled_cert_paths() -> Tuple[Path, Path]:
+    return (
+        resource_path("assets/certs/ro_cei_mai_root-ca.cer"),
+        resource_path("assets/certs/ro_cei_mai_sub-ca.cer"),
+    )
+
+
+def load_local_crls_from_assets() -> List[bytes]:
+    crls: List[bytes] = []
+    crl_dir = resource_path("assets/certs")
+    if crl_dir.exists():
+        for p in sorted(crl_dir.rglob("*.crl")):
+            try:
+                crls.append(p.read_bytes())
+            except Exception:
+                continue
+    return crls
+
+
+def _normalize_cli_options(
+    allow_fetching: bool,
+    revocation_mode: str,
+    strict_issuer: bool,
+    strict_eci: bool,
+    local_crls: Optional[List[bytes]],
+) -> Tuple[bool, str, bool]:
+    if strict_eci:
+        allow_fetching = True
+        revocation_mode = "require"
+        strict_issuer = True
+    if not allow_fetching and not local_crls:
+        revocation_mode = "soft-fail"
+    return allow_fetching, revocation_mode, strict_issuer
+
+
+def run_cli(argv: List[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="ValidareSemnatura-eCI",
+        description="Validate PDF signatures against MAI Root/Sub CA (CLI mode).",
+    )
+    parser.add_argument("--cli", action="store_true", help="Force CLI mode.")
+    parser.add_argument("--pdf", required=True, help="Path to signed PDF.")
+    parser.add_argument("--root", help="Path to Root CA (.cer/.crt/.pem).")
+    parser.add_argument("--sub", help="Path to Sub CA (.cer/.crt/.pem).")
+    parser.add_argument(
+        "--use-bundled",
+        action="store_true",
+        help="Use bundled MAI Root/Sub from assets/certs.",
+    )
+    parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable text.")
+    parser.add_argument(
+        "--output",
+        help="Write output to a file (JSON if --json is set, otherwise human-readable text).",
+    )
+    parser.add_argument(
+        "--no-stdout",
+        action="store_true",
+        help="Do not print output to stdout (useful with --output).",
+    )
+    parser.add_argument(
+        "--allow-fetching",
+        action="store_true",
+        help="Allow network fetching for CRL/AIA/OCSP.",
+    )
+    parser.add_argument(
+        "--revocation-mode",
+        default="soft-fail",
+        choices=["soft-fail", "hard-fail", "require"],
+        help="Revocation mode (effective when fetching is enabled).",
+    )
+    parser.add_argument("--strict-issuer", action="store_true", help="Require signer to be issued by provided Sub CA.")
+    parser.add_argument("--hard-mode", action="store_true", help="Reject extra embedded certs in CMS.")
+    parser.add_argument("--strict-eci", action="store_true", help="Enable strict eCI mode (MAI pin + policies).")
+    parser.add_argument("--local-crl", action="store_true", help="Use local CRLs from assets/certs/*.crl.")
+    parser.add_argument("--timestamp", action="store_true", help="Require valid trusted timestamp (if present).")
+
+    args = parser.parse_args(argv)
+
+    if args.no_stdout and not args.output:
+        parser.error("--no-stdout requires --output.")
+
+    if args.use_bundled:
+        root_path, sub_path = bundled_cert_paths()
+    else:
+        if not args.root or not args.sub:
+            parser.error("You must provide --root and --sub, or use --use-bundled.")
+        root_path = Path(args.root).expanduser()
+        sub_path = Path(args.sub).expanduser()
+
+    if not root_path.exists():
+        print(f"NO_SUCH_ROOT_CA: {root_path}", file=sys.stderr)
+        return 2
+    if not sub_path.exists():
+        print(f"NO_SUCH_SUB_CA: {sub_path}", file=sys.stderr)
+        return 2
+
+    pdf_path = Path(args.pdf).expanduser()
+    if not pdf_path.exists():
+        print(f"NO_SUCH_PDF: {pdf_path}", file=sys.stderr)
+        return 2
+
+    local_crls = load_local_crls_from_assets() if args.local_crl else None
+    allow_fetching, revocation_mode, strict_issuer = _normalize_cli_options(
+        allow_fetching=bool(args.allow_fetching),
+        revocation_mode=str(args.revocation_mode),
+        strict_issuer=bool(args.strict_issuer),
+        strict_eci=bool(args.strict_eci),
+        local_crls=local_crls,
+    )
+
+    strict_eci = bool(args.strict_eci)
+    hard_mode = bool(args.hard_mode)
+    require_timestamp = bool(args.timestamp)
+
+    try:
+        with pdf_path.open("rb") as f:
+            r = PdfFileReader(f)
+            sigs = r.embedded_signatures or []
+            sig_count = len(sigs)
+    except Exception as e:
+        print(f"EXCEPTION: {type(e).__name__}: {e}", file=sys.stderr)
+        return 2
+
+    if sig_count > 1:
+        root_cert = _load_cert_any(root_path)
+        sub_cert = _load_cert_any(sub_path)
+        root_fp = _cert_sha256_der(root_cert)
+        sub_fp = _cert_sha256_der(sub_cert)
+
+        results: List[Result] = []
+        if strict_eci and root_fp not in MAI_ROOT_SHA256:
+            base = Result(
+                ok=False,
+                message="STRICT_ECI_ROOT_NOT_MAI",
+                signature_count=sig_count,
+                root_cert_sha256=root_fp,
+                sub_cert_sha256=sub_fp,
+                strict_issuer_enabled=strict_issuer,
+                hard_mode_enabled=hard_mode,
+                allow_fetching_enabled=allow_fetching,
+                revocation_mode=revocation_mode,
+                local_crl_enabled=bool(local_crls),
+                local_crl_count=len(local_crls or []),
+                timestamp_check_enabled=bool(require_timestamp),
+                timestamp_ok=None,
+                timestamp_info=None,
+                strict_eci_enabled=True,
+                strict_eci_ok=False,
+                strict_eci_notes=["Root CA nu corespunde amprentei MAI."],
+                used_root_path=str(root_path),
+                used_sub_path=str(sub_path),
+            )
+            results = [Result(**base.__dict__) for _ in sigs]
+        elif strict_eci and sub_fp not in MAI_SUB_SHA256:
+            base = Result(
+                ok=False,
+                message="STRICT_ECI_SUB_NOT_MAI",
+                signature_count=sig_count,
+                root_cert_sha256=root_fp,
+                sub_cert_sha256=sub_fp,
+                strict_issuer_enabled=strict_issuer,
+                hard_mode_enabled=hard_mode,
+                allow_fetching_enabled=allow_fetching,
+                revocation_mode=revocation_mode,
+                local_crl_enabled=bool(local_crls),
+                local_crl_count=len(local_crls or []),
+                timestamp_check_enabled=bool(require_timestamp),
+                timestamp_ok=None,
+                timestamp_info=None,
+                strict_eci_enabled=True,
+                strict_eci_ok=False,
+                strict_eci_notes=["Sub CA nu corespunde amprentei MAI."],
+                used_root_path=str(root_path),
+                used_sub_path=str(sub_path),
+            )
+            results = [Result(**base.__dict__) for _ in sigs]
+        else:
+            for embedded_sig in sigs:
+                res = validate_embedded_signature_against_two_cas(
+                    embedded_sig=embedded_sig,
+                    signature_count=sig_count,
+                    root_cert=root_cert,
+                    sub_cert=sub_cert,
+                    root_fp=root_fp,
+                    sub_fp=sub_fp,
+                    allow_fetching=allow_fetching,
+                    revocation_mode=revocation_mode,
+                    strict_issuer=strict_issuer,
+                    hard_mode=hard_mode,
+                    strict_eci=strict_eci,
+                    local_crls=local_crls,
+                    require_timestamp=require_timestamp,
+                    root_ca_path=root_path,
+                    sub_ca_path=sub_path,
+                )
+                results.append(res)
+
+        if args.json:
+            output_text = json.dumps([r.__dict__ for r in results], ensure_ascii=False, indent=2)
+        else:
+            parts: List[str] = []
+            for idx, res in enumerate(results, start=1):
+                parts.append(f"=== Semnătura {idx} ===")
+                parts.append(result_to_human(res))
+                parts.append("")
+            output_text = "\n".join(parts).rstrip() + "\n"
+
+        if args.output:
+            Path(args.output).write_text(output_text, encoding="utf-8")
+
+        if not args.no_stdout:
+            print(output_text, end="")
+
+        return 0 if results and all(r.ok for r in results) else 1
+
+    res = validate_pdf_against_two_cas(
+        pdf_path=pdf_path,
+        root_ca_path=root_path,
+        sub_ca_path=sub_path,
+        allow_fetching=allow_fetching,
+        revocation_mode=revocation_mode,
+        strict_issuer=strict_issuer,
+        hard_mode=hard_mode,
+        strict_eci=strict_eci,
+        local_crls=local_crls,
+        require_timestamp=require_timestamp,
+    )
+
+    output_text = result_to_json(res) if args.json else result_to_human(res)
+
+    if args.output:
+        Path(args.output).write_text(output_text, encoding="utf-8")
+
+    if not args.no_stdout:
+        print(output_text)
+
+    return 0 if res.ok else 1
 
 # =============================================================================
 # Result model
@@ -3017,9 +3259,25 @@ def run_gui() -> int:
 # Entrypoint
 # =============================================================================
 def main():
-    if "--cli" in sys.argv:
-        print("CLI not implemented in this build.")
-        return 2
+    cli_markers = {
+        "--cli",
+        "--pdf",
+        "--root",
+        "--sub",
+        "--use-bundled",
+        "--json",
+        "--allow-fetching",
+        "--revocation-mode",
+        "--strict-issuer",
+        "--hard-mode",
+        "--strict-eci",
+        "--local-crl",
+        "--timestamp",
+        "-h",
+        "--help",
+    }
+    if any(flag in sys.argv[1:] for flag in cli_markers):
+        return run_cli(sys.argv[1:])
     return run_gui()
 
 
