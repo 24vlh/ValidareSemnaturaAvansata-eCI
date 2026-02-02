@@ -161,7 +161,7 @@ Notă: `--no-stdout` necesită `--output`.
 ### 1. Descarcă aplicația
 Descarcă prima versiune oficială de aici:
 
-👉 https://github.com/24vlh/Validare-Sematura-eCI/releases/download/v2.0.3/ValidareSemnaturaAvansata-eCI-v2.0.3-portable-folder-build.zip
+👉 https://github.com/24vlh/ValidareSemnaturaAvansata-eCI/releases/download/v2.0.3/ValidareSemnaturaAvansata-eCI-v2.0.3-portable-folder-build.zip
 
 ---
 
@@ -315,5 +315,5 @@ certutil -hashfile ValidareSemnaturaAvansata-eCI.exe SHA256
 
 **Notă:**
 Aceste hash-uri sunt publicate pentru transparență și verificabilitate.
-Dacă nu se potrivesc, **nu rula aplicația** și descarcă din nou arhiva doar din secțiunea oficială GitHub: https://github.com/24vlh/Validare-Sematura-eCI/releases.
+Dacă nu se potrivesc, **nu rula aplicația** și descarcă din nou arhiva doar din secțiunea oficială GitHub: https://github.com/24vlh/ValidareSemnaturaAvansata-eCI/releases.
 
