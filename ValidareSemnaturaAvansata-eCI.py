@@ -45,11 +45,11 @@ from asn1crypto import cms as asn1_cms
 # Versioning / Identity
 # =============================================================================
 APP_NAME = "Validare Semnătură Avansată cu eCI"
-APP_VERSION = "2.0.2"
-APP_BUILD = "2026-01-31"
+APP_VERSION = "2.0.3"
 APP_AUTHOR = "vlah.io • @24vlh"
 
 APP_CHANGELOG = [
+    ("2.0.3", "Rebranding: ValidareSemnatura-eCI → ValidareSemnaturaAvansata-eCI"),
     ("2.0.2", "CLI implementat + output (--output, --no-stdout)"),
     ("2.0.1", "Curățare text/UI + corecții micro (multi + audit)"),
     ("2.0.0", "Multi semnături, verificări criptografice extinse, opțiuni + taburi noi"),
@@ -78,6 +78,32 @@ def resource_path(rel: str) -> Path:
     if hasattr(sys, "_MEIPASS"):
         return Path(sys._MEIPASS) / rel  # type: ignore[attr-defined]
     return Path(__file__).resolve().parent / rel
+
+
+def _load_build_date() -> str:
+    candidates = [
+        resource_path("assets/build_info.json"),
+        resource_path("build_info.json"),
+    ]
+    for path in candidates:
+        try:
+            if path.exists():
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    val = data.get("build_date")
+                    if isinstance(val, str) and val.strip():
+                        return val.strip()
+        except Exception:
+            pass
+    try:
+        if getattr(sys, "frozen", False):
+            return datetime.fromtimestamp(Path(sys.executable).stat().st_mtime).strftime("%Y-%m-%d")
+        return datetime.fromtimestamp(Path(__file__).stat().st_mtime).strftime("%Y-%m-%d")
+    except Exception:
+        return "UNKNOWN"
+
+
+APP_BUILD = _load_build_date()
 
 
 def open_url(url: str) -> bool:
@@ -142,7 +168,7 @@ def _normalize_cli_options(
 
 def run_cli(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(
-        prog="ValidareSemnatura-eCI",
+        prog="ValidareSemnaturaAvansata-eCI",
         description="Validate PDF signatures against MAI Root/Sub CA (CLI mode).",
     )
     parser.add_argument("--cli", action="store_true", help="Force CLI mode.")
@@ -2449,16 +2475,6 @@ def run_gui() -> int:
         except Exception:
             return "UNKNOWN"
 
-    def _bundle_date_text() -> str:
-        cert_dir = resource_path("assets/certs")
-        try:
-            mtimes = [p.stat().st_mtime for p in cert_dir.glob("*.cer")]
-            if mtimes:
-                return datetime.fromtimestamp(max(mtimes)).strftime("%Y-%m-%d")
-        except Exception:
-            pass
-        return "UNKNOWN"
-
     def refresh_cert_ui():
         root_path, sub_path = resolve_cert_paths()
         root_fp = _cert_fp_text(root_path)
@@ -2473,7 +2489,6 @@ def run_gui() -> int:
             sub_fp_tooltip.text = f"Sub  SHA256: {sub_fp}"
         except Exception:
             pass
-        bundle_date_label.configure(text=f"Bundle date: {_bundle_date_text()}")
 
     def refresh_cert_source():
         if cert_source_var.get() == "bundled":
@@ -2575,9 +2590,6 @@ def run_gui() -> int:
         width=24,
     )
     btn_open_bundle.pack(side="left", padx=(8, 0))
-    bundle_date_label = ttk.Label(fp_actions, text="Bundle date: UNKNOWN", style="Muted.TLabel")
-    bundle_date_label.pack(side="left", padx=(10, 0))
-
     refresh_cert_source()
 
     # Hardening options
@@ -3283,3 +3295,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+

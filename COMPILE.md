@@ -1,6 +1,6 @@
 # COMPILE.md
 
-Step-by-step instructions for a **fresh Windows 11 PC** with **no Python installed**, starting from only `ValidareSemnatura-eCI.py` (no `.spec` file).
+Step-by-step instructions for a **fresh Windows 11 PC** with **no Python installed**, starting from only `ValidareSemnaturaAvansata-eCI.py` (no `.spec` file).
 
 The goal: produce a Windows GUI executable using PyInstaller.
 
@@ -8,7 +8,7 @@ The goal: produce a Windows GUI executable using PyInstaller.
 
 ## 0) What you need to have (files)
 Minimum:
-- `ValidareSemnatura-eCI.py`
+- `ValidareSemnaturaAvansata-eCI.py`
 
 Recommended for full functionality and correct UI:
 - `assets\app.ico` (app icon)
@@ -45,17 +45,17 @@ You should see Python 3.x.
 ---
 
 ## 2) Prepare a build folder
-Create a new folder (example: `C:\ValidareSemnatura-eCI`) and place the files inside:
+Create a new folder (example: `C:\ValidareSemnaturaAvansata-eCI`) and place the files inside:
 
 ```
-C:\ValidareSemnatura-eCI\
-  ValidareSemnatura-eCI.py
+C:\ValidareSemnaturaAvansata-eCI\
+  ValidareSemnaturaAvansata-eCI.py
   assets\    (optional but recommended)
 ```
 
 Open PowerShell in that folder:
 ```powershell
-cd C:\ValidareSemnatura-eCI
+cd C:\ValidareSemnaturaAvansata-eCI
 ```
 
 ---
@@ -127,17 +127,28 @@ python -m pip install `
 
 ---
 
-## 5) Build the executable (no .spec file)
+## 5) Generate build_info.json (auto build date)
+This file is bundled into the app and is used to display the build date.
+
+```powershell
+if (-not (Test-Path .\\assets)) { New-Item -ItemType Directory -Path .\\assets | Out-Null }
+$buildDate = Get-Date -Format "yyyy-MM-dd"
+@{ build_date = $buildDate } | ConvertTo-Json | Set-Content -Encoding UTF8 .\\assets\\build_info.json
+```
+
+---
+
+## 6) Build the executable (no .spec file)
 Use PyInstaller directly from the `.py` file.
 
 ### Recommended build (GUI, with assets, with icon)
 ```powershell
 pyinstaller `
   --noconsole `
-  --name "ValidareSemnatura-eCI" `
+  --name "ValidareSemnaturaAvansata-eCI" `
   --icon "assets\app.ico" `
   --add-data "assets;assets" `
-  ValidareSemnatura-eCI.py
+  ValidareSemnaturaAvansata-eCI.py
 ```
 
 Notes:
@@ -152,7 +163,7 @@ Optional flags you can add:
 
 ### Minimal build (no assets)
 ```powershell
-pyinstaller --noconsole --name "ValidareSemnatura-eCI" ValidareSemnatura-eCI.py
+pyinstaller --noconsole --name "ValidareSemnaturaAvansata-eCI" ValidareSemnaturaAvansata-eCI.py
 ```
 
 ### One-file build (optional)
@@ -160,39 +171,39 @@ pyinstaller --noconsole --name "ValidareSemnatura-eCI" ValidareSemnatura-eCI.py
 pyinstaller `
   --onefile `
   --noconsole `
-  --name "ValidareSemnatura-eCI" `
+  --name "ValidareSemnaturaAvansata-eCI" `
   --icon "assets\app.ico" `
   --add-data "assets;assets" `
-  ValidareSemnatura-eCI.py
+  ValidareSemnaturaAvansata-eCI.py
 ```
 
 Note: one-file builds unpack to a temp folder at runtime. If you do not have `assets`, remove `--icon` and `--add-data`.
 
 ---
 
-## 6) Where the EXE is produced
+## 7) Where the EXE is produced
 PyInstaller outputs to:
 ```
-dist\ValidareSemnatura-eCI\ValidareSemnatura-eCI.exe
+dist\ValidareSemnaturaAvansata-eCI\ValidareSemnaturaAvansata-eCI.exe
 ```
 
 If you included assets, the folder will also contain:
 ```
-dist\ValidareSemnatura-eCI\assets\
+dist\ValidareSemnaturaAvansata-eCI\assets\
 ```
 
 Keep the `assets` folder **next to** the EXE if you used `--add-data`.
 
 ---
 
-## 7) Run the application
+## 8) Run the application
 ```powershell
-.\dist\ValidareSemnatura-eCI\ValidareSemnatura-eCI.exe
+.\dist\ValidareSemnaturaAvansata-eCI\ValidareSemnaturaAvansata-eCI.exe
 ```
 
 ---
 
-## 8) Clean rebuild (optional)
+## 9) Clean rebuild (optional)
 ```powershell
 Remove-Item -Recurse -Force .\build, .\dist
 ```
@@ -203,3 +214,4 @@ Remove-Item -Recurse -Force .\build, .\dist
 - GUI by default. CLI is available with `--cli` (or any CLI flags like `--pdf`).
 - The app uses `assets/` for icon/logo and for bundled certificates/CRLs.
 - Network access for CRL/AIA/OCSP validation is optional and controlled by the user in the UI.
+

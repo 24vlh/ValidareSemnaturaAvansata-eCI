@@ -1,6 +1,6 @@
 .venv
 .idea
-ValidareSemnatura-eCI.spec
+ValidareSemnaturaAvansata-eCI.spec
 build
 dist
 __pycache__
