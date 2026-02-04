@@ -4,6 +4,8 @@
 
 ## Pe scurt
 
+### [Descărcare](https://github.com/24vlh/ValidareSemnaturaAvansata-eCI/releases/download/v2.0.3/ValidareSemnaturaAvansata-eCI-v2.0.3-portable-folder-build.zip)
+
 **ValidareSemnaturaAvansata-eCI** este o aplicație Windows portabilă (executabil `.exe`) care verifică dacă un PDF a fost semnat corect cu **certificatul de semnătură electronică avansată din Cartea Electronică de Identitate (CEI)**, emis de MAI.
 
 Aplicația face **doar validare tehnică criptografică**:
