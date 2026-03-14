@@ -1,217 +1,344 @@
 # COMPILE.md
 
-Step-by-step instructions for a **fresh Windows 11 PC** with **no Python installed**, starting from only `ValidareSemnaturaAvansata-eCI.py` (no `.spec` file).
+Build and release notes for `ValidareSemnaturaAvansata-eCI`.
 
-The goal: produce a Windows GUI executable using PyInstaller.
+This project now has two canonical build entrypoints:
+
+- PowerShell: `scripts\build-release.ps1`
+- WSL wrapper: `scripts/build-release.sh`
+- Pinned build requirements: `requirements-build.txt`
+
+The PowerShell script is the source of truth. The WSL script simply invokes it through `powershell.exe`, so there is only one build implementation to maintain.
 
 ---
 
-## 0) What you need to have (files)
+## Paths
+
+Project-local paths:
+
+- Windows repo path: `W:\public_html\24vlh\ValidareSemnaturaAvansata-eCI`
+- WSL repo path: `/mnt/w/public_html/24vlh/ValidareSemnaturaAvansata-eCI`
+
+Clean Windows machine example path:
+
+- `C:\ValidareSemnaturaAvansata-eCI`
+
+If you are building from a fresh Windows PC outside the 24VLH workspace, use the `C:\...` example path. If you are building from the shared workspace, use the `W:\...` / `/mnt/w/...` paths above.
+
+---
+
+## Output conventions
+
+The build scripts follow the current `dist` naming already used by this project:
+
+- Folder build directory: `dist\ValidareSemnaturaAvansata-eCI\`
+- Zipped folder build: `dist\ValidareSemnaturaAvansata-eCI-v<version>-portable-folder-build.zip`
+- Portable one-file EXE: `dist\ValidareSemnaturaAvansata-eCI-v<version>-portable.exe`
+
+Example for version `2.0.3`:
+
+- `dist\ValidareSemnaturaAvansata-eCI\`
+- `dist\ValidareSemnaturaAvansata-eCI-v2.0.3-portable-folder-build.zip`
+- `dist\ValidareSemnaturaAvansata-eCI-v2.0.3-portable.exe`
+
+The non-versioned folder build is kept as the live PyInstaller output. The portable `.exe` is renamed to the versioned release artifact name.
+
+---
+
+## Build targets
+
+Both scripts accept the same logical targets:
+
+- `all`: build folder output, zip the folder build, and build the portable EXE
+- `folder`: build folder output and zip it
+- `portable`: build only the portable EXE
+
+The release version comes from `APP_VERSION` in `ValidareSemnaturaAvansata-eCI.py`.
+You may also pass a version parameter explicitly as a consistency check.
+
+By default, the script also:
+
+- creates `.\.venv\` automatically if it is missing
+- installs or refreshes the pinned Windows build dependencies from `requirements-build.txt`
+- uses that managed Windows virtual environment for the build
+
+---
+
+## Version discipline
+
+`APP_VERSION` in `ValidareSemnaturaAvansata-eCI.py` is the single source of truth.
+
+Recommended rule:
+
+1. Update `APP_VERSION` in `ValidareSemnaturaAvansata-eCI.py`
+2. Run the build script without a version argument
+
+Optional strict check:
+
+- You may also pass `-Version` / `--version`.
+- If provided, it must match `APP_VERSION`.
+- If it does not match, the build stops immediately.
+
+The script also regenerates `assets\build_info.json` on each run with:
+
+- `build_date`
+- `version`
+- `target`
+
+The app currently reads `build_date`; the extra metadata is retained for release tracking.
+
+Important runtime boundary:
+
+- WSL is the default command entrypoint.
+- The actual packaging environment is still a Windows Python virtual environment in `.\.venv\`.
+- Linux packages installed into WSL Python are not reused by Windows PyInstaller.
+- The scripts handle that by provisioning and updating the Windows `.venv` automatically.
+
+---
+
+## Files required in the project
+
 Minimum:
+
 - `ValidareSemnaturaAvansata-eCI.py`
 
-Recommended for full functionality and correct UI:
-- `assets\app.ico` (app icon)
-- `assets\logo.png` (UI logo)
-- `assets\sample.png` (README image, not required by app)
-- `assets\certs\*.cer` and `assets\certs\*.crl` (included MAI Root/Sub + CRLs)
+Recommended for the real release build:
 
-If you only have the `.py`, the app can still run, but:
-- it will show a missing icon/logo
-- it will not have the bundled certificates or CRLs
+- `assets\app.ico`
+- `assets\logo.png`
+- `assets\sample.png`
+- `assets\certs\*.cer`
+- `assets\certs\*.crl`
+
+The scripts automatically add the whole `assets` folder to the PyInstaller bundle when it exists.
 
 ---
 
-## 1) Install Python (fresh Windows 11)
-Pick **one** of these methods. Both install the **latest Python 3.x** available at the time you run them.
+## 1) Install Python on Windows
 
-### Option A: Install via PowerShell (winget)
+Use a native Windows Python installation or the Windows `py` launcher. PyInstaller must run on Windows because this project produces Windows executables.
+
+Option A, via PowerShell:
+
 ```powershell
 winget install -e --id Python.Python.3
 ```
 
-### Option B: Install via browser
-1. Download the latest Python 3.x from python.org.
-2. During install, **check** “Add Python to PATH”.
-3. Finish install.
+Option B, via python.org:
 
-To verify:
+1. Download the latest Python 3.x installer.
+2. Check `Add Python to PATH`.
+3. Complete the install.
+
+Verify:
+
 ```powershell
 python --version
 where.exe python
+py --version
 ```
-You should see Python 3.x.
 
 ---
 
-## 2) Prepare a build folder
-Create a new folder (example: `C:\ValidareSemnaturaAvansata-eCI`) and place the files inside:
+## 2) Open the project
 
-```
-C:\ValidareSemnaturaAvansata-eCI\
-  ValidareSemnaturaAvansata-eCI.py
-  assets\    (optional but recommended)
+Project-local workspace:
+
+```powershell
+cd W:\public_html\24vlh\ValidareSemnaturaAvansata-eCI
 ```
 
-Open PowerShell in that folder:
+Fresh Windows machine example:
+
 ```powershell
 cd C:\ValidareSemnaturaAvansata-eCI
 ```
 
+WSL:
+
+```sh
+cd /mnt/w/public_html/24vlh/ValidareSemnaturaAvansata-eCI
+```
+
 ---
 
-## 3) Create and activate a virtual environment
-If PowerShell blocks activation, allow local scripts for the current user:
+## 3) Automatic environment bootstrap
+
+You do not need to create `.\.venv\` manually for the normal release flow.
+
+When you run the build scripts without `-PythonExe`:
+
+1. the script locates Windows Python or the Windows `py` launcher
+2. it creates `.\.venv\` if missing
+3. it upgrades `pip`
+4. it installs the pinned Windows build dependencies from `requirements-build.txt`
+5. it runs PyInstaller from that Windows `.venv`
+
+This is the recommended path, especially when launching from WSL.
+
+---
+
+## 4) Manual environment setup (optional)
+
+Use this only if you want to inspect or maintain the Windows build environment yourself.
+
+If PowerShell blocks activation:
+
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 ```
 
+Create and activate:
+
 ```powershell
-python -m venv .venv
+py -3 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
----
+Install the pinned build requirements:
 
-## 4) Install dependencies
-You can install **latest** dependencies (simpler) or **pinned** dependencies (reproducible).
-
-### Option A: Latest versions
-These are the packages required by the script:
 ```powershell
 python -m pip install --upgrade pip
-python -m pip install `
-  asn1crypto `
-  cryptography `
-  pillow `
-  pyHanko `
-  pyhanko-certvalidator `
-  lxml `
-  oscrypto `
-  requests `
-  tzlocal `
-  PyYAML `
-  pyinstaller
-```
-
-### Option B: Pinned versions (reproducible)
-If you want to match the exact versions used in the last known build, pin them:
-```powershell
-python -m pip install `
-  altgraph==0.17.5 `
-  asn1crypto==1.5.1 `
-  certifi==2026.1.4 `
-  cffi==2.0.0 `
-  charset-normalizer==3.4.4 `
-  cryptography==46.0.4 `
-  idna==3.11 `
-  lxml==6.0.2 `
-  oscrypto==1.3.0 `
-  packaging==26.0 `
-  pefile==2024.8.26 `
-  pillow==12.1.0 `
-  pycparser==3.0 `
-  pyHanko==0.32.0 `
-  pyhanko-certvalidator==0.29.0 `
-  pyinstaller==6.18.0 `
-  pyinstaller-hooks-contrib==2026.0 `
-  pywin32-ctypes==0.2.3 `
-  PyYAML==6.0.3 `
-  requests==2.32.5 `
-  setuptools==80.10.2 `
-  tzdata==2025.3 `
-  tzlocal==5.3.1 `
-  uritools==6.0.1 `
-  urllib3==2.6.3
+python -m pip install -r .\requirements-build.txt
 ```
 
 ---
 
-## 5) Generate build_info.json (auto build date)
-This file is bundled into the app and is used to display the build date.
+## 5) Run the build scripts
+
+### Preferred on Windows PowerShell
+
+Build everything:
 
 ```powershell
-if (-not (Test-Path .\\assets)) { New-Item -ItemType Directory -Path .\\assets | Out-Null }
-$buildDate = Get-Date -Format "yyyy-MM-dd"
-@{ build_date = $buildDate } | ConvertTo-Json | Set-Content -Encoding UTF8 .\\assets\\build_info.json
+.\scripts\build-release.ps1 -Target all
+```
+
+Build only folder output plus ZIP:
+
+```powershell
+.\scripts\build-release.ps1 -Target folder
+```
+
+Build only the portable EXE:
+
+```powershell
+.\scripts\build-release.ps1 -Target portable
+```
+
+### Preferred from WSL
+
+Build everything:
+
+```sh
+./scripts/build-release.sh --target all
+```
+
+Build only folder output plus ZIP:
+
+```sh
+./scripts/build-release.sh --target folder
+```
+
+Build only the portable EXE:
+
+```sh
+./scripts/build-release.sh --target portable
+```
+
+Optional explicit version check:
+
+```powershell
+.\scripts\build-release.ps1 -Target all -Version 2.0.3
+```
+
+```sh
+./scripts/build-release.sh --target all --version 2.0.3
+```
+
+Important:
+
+- The WSL script still builds with Windows PowerShell.
+- The WSL script provisions `.\.venv\` automatically when it is missing.
+- The WSL script is the correct project-local entrypoint when following the WSL-first command policy from `AGENTS.md`.
+- If you are launching from a Windows terminal and want to follow the exact repo policy, use:
+
+```powershell
+wsl sh -lc "cd /mnt/w/public_html/24vlh/ValidareSemnaturaAvansata-eCI && ./scripts/build-release.sh --target all"
 ```
 
 ---
 
-## 6) Build the executable (no .spec file)
-Use PyInstaller directly from the `.py` file.
+## 6) What the scripts do
 
-### Recommended build (GUI, with assets, with icon)
-```powershell
-pyinstaller `
-  --noconsole `
-  --name "ValidareSemnaturaAvansata-eCI" `
-  --icon "assets\app.ico" `
-  --add-data "assets;assets" `
-  ValidareSemnaturaAvansata-eCI.py
-```
+The PowerShell script:
 
-Notes:
-- `--noconsole` makes it a Windows GUI app.
-- `--add-data "assets;assets"` bundles the assets folder.
-- If you do not have `assets\app.ico`, remove the `--icon` line.
-- If you do not have the `assets` folder, remove the `--add-data` line.
+1. Resolves the project root from the script location
+2. Reads `APP_VERSION` from the Python source
+3. Optionally validates a provided version parameter against `APP_VERSION`
+4. Creates `.\.venv\` automatically if it is missing
+5. Installs or refreshes the pinned Windows build dependencies from `requirements-build.txt`
+6. Regenerates `assets\build_info.json`
+7. Runs PyInstaller with the project assets bundled
+8. Produces the requested artifact set
+9. Creates the versioned ZIP and/or versioned portable EXE names
 
-Optional flags you can add:
-- `--clean` wipes PyInstaller's build cache before packaging (avoids stale artifacts).
-- `--windowed` is the same as `--noconsole` on Windows (GUI-only, no console window).
+PyInstaller is invoked with:
 
-### Minimal build (no assets)
-```powershell
-pyinstaller --noconsole --name "ValidareSemnaturaAvansata-eCI" ValidareSemnaturaAvansata-eCI.py
-```
+- `--clean`
+- `--noconfirm`
+- `--noconsole`
+- `--name ValidareSemnaturaAvansata-eCI`
+- `--add-data "assets;assets"` when `assets\` exists
+- `--icon assets\app.ico` when `assets\app.ico` exists
 
-### One-file build (optional)
-```powershell
-pyinstaller `
-  --onefile `
-  --noconsole `
-  --name "ValidareSemnaturaAvansata-eCI" `
-  --icon "assets\app.ico" `
-  --add-data "assets;assets" `
-  ValidareSemnaturaAvansata-eCI.py
-```
-
-Note: one-file builds unpack to a temp folder at runtime. If you do not have `assets`, remove `--icon` and `--add-data`.
+The script uses separate PyInstaller work/spec directories for folder and portable builds to avoid collisions.
 
 ---
 
-## 7) Where the EXE is produced
-PyInstaller outputs to:
-```
-dist\ValidareSemnaturaAvansata-eCI\ValidareSemnaturaAvansata-eCI.exe
+## 7) Output locations
+
+After `-Target all` with `APP_VERSION = "2.0.3"`, expect:
+
+```text
+dist\ValidareSemnaturaAvansata-eCI\
+dist\ValidareSemnaturaAvansata-eCI-v2.0.3-portable-folder-build.zip
+dist\ValidareSemnaturaAvansata-eCI-v2.0.3-portable.exe
 ```
 
-If you included assets, the folder will also contain:
-```
-dist\ValidareSemnaturaAvansata-eCI\assets\
-```
+Folder build executable:
 
-Keep the `assets` folder **next to** the EXE if you used `--add-data`.
-
----
-
-## 8) Run the application
 ```powershell
 .\dist\ValidareSemnaturaAvansata-eCI\ValidareSemnaturaAvansata-eCI.exe
 ```
 
----
+Portable executable:
 
-## 9) Clean rebuild (optional)
 ```powershell
-Remove-Item -Recurse -Force .\build, .\dist
+.\dist\ValidareSemnaturaAvansata-eCI-v2.0.3-portable.exe
 ```
 
 ---
 
-## Behavior notes
-- GUI by default. CLI is available with `--cli` (or any CLI flags like `--pdf`).
-- The app uses `assets/` for icon/logo and for bundled certificates/CRLs.
-- Network access for CRL/AIA/OCSP validation is optional and controlled by the user in the UI.
+## 8) Clean rebuild
 
+If you want to wipe previous build outputs:
+
+```powershell
+Remove-Item -Recurse -Force .\build, .\dist
+```
+
+or from WSL:
+
+```sh
+rm -rf build dist
+```
+
+---
+
+## 9) Behavioral notes
+
+- The app is GUI-first; CLI support is still available through the executable.
+- The build scripts assume a Windows build host, even when launched from WSL.
+- The folder ZIP is intended for release packaging and should preserve the folder-build layout.
+- The app uses the bundled `assets/` directory for UI images and included MAI certificates/CRLs.

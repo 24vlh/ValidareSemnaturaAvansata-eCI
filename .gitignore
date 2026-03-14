@@ -4,3 +4,4 @@ ValidareSemnaturaAvansata-eCI.spec
 build
 dist
 __pycache__
+AGENTS.md

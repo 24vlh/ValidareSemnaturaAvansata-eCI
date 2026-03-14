@@ -45,7 +45,7 @@ from asn1crypto import cms as asn1_cms
 # Versioning / Identity
 # =============================================================================
 APP_NAME = "Validare Semnătură Avansată cu eCI"
-APP_VERSION = "2.0.3"
+APP_VERSION = "2.0.4"
 APP_AUTHOR = "vlah.io • @24vlh"
 
 APP_CHANGELOG = [
@@ -247,7 +247,7 @@ def run_cli(argv: List[str]) -> int:
 
     try:
         with pdf_path.open("rb") as f:
-            r = PdfFileReader(f)
+            r = _open_pdf_reader_compatible(f)
             sigs = r.embedded_signatures or []
             sig_count = len(sigs)
     except Exception as e:
@@ -566,6 +566,30 @@ def _is_entire_file_coverage(val: Any) -> bool:
 def _is_modification_none(val: Any) -> bool:
     s = str(val) if val is not None else ""
     return ("NONE" in s) or s.endswith(".NONE")
+
+
+def _open_pdf_reader_compatible(stream: Any) -> PdfFileReader:
+    """
+    Keep strict parsing for standard PDFs, but reopen hybrid-reference PDFs
+    in the non-strict mode required by pyHanko validation.
+    """
+    reader = PdfFileReader(stream)
+    try:
+        hybrid_xrefs = bool(reader.xrefs.hybrid_xrefs_present)
+    except Exception:
+        hybrid_xrefs = False
+
+    if not hybrid_xrefs or not getattr(reader, "strict", True):
+        return reader
+
+    try:
+        stream.seek(0)
+    except Exception:
+        return reader
+
+    return PdfFileReader(stream, strict=False)
+
+
 # =============================================================================
 # Strict issuer (cryptographic pin)
 # =============================================================================
@@ -663,7 +687,7 @@ def _save_signer_cert_bytes(pdf_path: Path, dest: Path) -> bool:
     """
     try:
         with pdf_path.open("rb") as f:
-            r = PdfFileReader(f)
+            r = _open_pdf_reader_compatible(f)
             sigs = r.embedded_signatures or []
             if not sigs:
                 return False
@@ -868,7 +892,7 @@ def validate_pdf_against_two_cas(
 
     try:
         with pdf_path.open("rb") as f:
-            r = PdfFileReader(f)
+            r = _open_pdf_reader_compatible(f)
             sigs = r.embedded_signatures or []
             sig_count = len(sigs)
 
@@ -3108,7 +3132,7 @@ def run_gui() -> int:
 
         try:
             with pdf_path.open("rb") as f:
-                r = PdfFileReader(f)
+                r = _open_pdf_reader_compatible(f)
                 sigs = r.embedded_signatures or []
                 sig_count = len(sigs)
 
