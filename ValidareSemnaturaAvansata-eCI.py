@@ -49,6 +49,7 @@ APP_VERSION = "2.0.4"
 APP_AUTHOR = "vlah.io • @24vlh"
 
 APP_CHANGELOG = [
+    ("2.0.4", "Compatibilitate PDF hybrid-reference + automatizare build WSL/PowerShell"),
     ("2.0.3", "Rebranding: ValidareSemnatura-eCI → ValidareSemnaturaAvansata-eCI"),
     ("2.0.2", "CLI implementat + output (--output, --no-stdout)"),
     ("2.0.1", "Curățare text/UI + corecții micro (multi + audit)"),
@@ -3319,4 +3320,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

@@ -8,9 +8,9 @@ Usage:
 
 Examples:
   ./scripts/build-release.sh --target all
-  ./scripts/build-release.sh --version 2.0.3 --target all
-  ./scripts/build-release.sh --version 2.0.3 --target folder
-  ./scripts/build-release.sh --version 2.0.3 --target portable
+  ./scripts/build-release.sh --version 2.0.4 --target all
+  ./scripts/build-release.sh --version 2.0.4 --target folder
+  ./scripts/build-release.sh --version 2.0.4 --target portable
 EOF
 }
 

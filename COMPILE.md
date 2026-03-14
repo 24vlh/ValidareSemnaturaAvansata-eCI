@@ -35,11 +35,11 @@ The build scripts follow the current `dist` naming already used by this project:
 - Zipped folder build: `dist\ValidareSemnaturaAvansata-eCI-v<version>-portable-folder-build.zip`
 - Portable one-file EXE: `dist\ValidareSemnaturaAvansata-eCI-v<version>-portable.exe`
 
-Example for version `2.0.3`:
+Example for version `2.0.4`:
 
 - `dist\ValidareSemnaturaAvansata-eCI\`
-- `dist\ValidareSemnaturaAvansata-eCI-v2.0.3-portable-folder-build.zip`
-- `dist\ValidareSemnaturaAvansata-eCI-v2.0.3-portable.exe`
+- `dist\ValidareSemnaturaAvansata-eCI-v2.0.4-portable-folder-build.zip`
+- `dist\ValidareSemnaturaAvansata-eCI-v2.0.4-portable.exe`
 
 The non-versioned folder build is kept as the live PyInstaller output. The portable `.exe` is renamed to the versioned release artifact name.
 
@@ -249,11 +249,11 @@ Build only the portable EXE:
 Optional explicit version check:
 
 ```powershell
-.\scripts\build-release.ps1 -Target all -Version 2.0.3
+.\scripts\build-release.ps1 -Target all -Version 2.0.4
 ```
 
 ```sh
-./scripts/build-release.sh --target all --version 2.0.3
+./scripts/build-release.sh --target all --version 2.0.4
 ```
 
 Important:
@@ -298,12 +298,12 @@ The script uses separate PyInstaller work/spec directories for folder and portab
 
 ## 7) Output locations
 
-After `-Target all` with `APP_VERSION = "2.0.3"`, expect:
+After `-Target all` with `APP_VERSION = "2.0.4"`, expect:
 
 ```text
 dist\ValidareSemnaturaAvansata-eCI\
-dist\ValidareSemnaturaAvansata-eCI-v2.0.3-portable-folder-build.zip
-dist\ValidareSemnaturaAvansata-eCI-v2.0.3-portable.exe
+dist\ValidareSemnaturaAvansata-eCI-v2.0.4-portable-folder-build.zip
+dist\ValidareSemnaturaAvansata-eCI-v2.0.4-portable.exe
 ```
 
 Folder build executable:
@@ -315,7 +315,7 @@ Folder build executable:
 Portable executable:
 
 ```powershell
-.\dist\ValidareSemnaturaAvansata-eCI-v2.0.3-portable.exe
+.\dist\ValidareSemnaturaAvansata-eCI-v2.0.4-portable.exe
 ```
 
 ---

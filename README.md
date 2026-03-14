@@ -4,7 +4,7 @@
 
 ## Pe scurt
 
-### [Descărcare](https://github.com/24vlh/ValidareSemnaturaAvansata-eCI/releases/download/v2.0.3/ValidareSemnaturaAvansata-eCI-v2.0.3-portable-folder-build.zip)
+### [Descărcare](https://github.com/24vlh/ValidareSemnaturaAvansata-eCI/releases/download/v2.0.4/ValidareSemnaturaAvansata-eCI-v2.0.4-portable-folder-build.zip)
 
 **ValidareSemnaturaAvansata-eCI** este o aplicație Windows portabilă (executabil `.exe`) care verifică dacă un PDF a fost semnat corect cu **certificatul de semnătură electronică avansată din Cartea Electronică de Identitate (CEI)**, emis de MAI.
 
@@ -163,7 +163,7 @@ Notă: `--no-stdout` necesită `--output`.
 ### 1. Descarcă aplicația
 Descarcă prima versiune oficială de aici:
 
-👉 https://github.com/24vlh/ValidareSemnaturaAvansata-eCI/releases/download/v2.0.3/ValidareSemnaturaAvansata-eCI-v2.0.3-portable-folder-build.zip
+👉 https://github.com/24vlh/ValidareSemnaturaAvansata-eCI/releases/download/v2.0.4/ValidareSemnaturaAvansata-eCI-v2.0.4-portable-folder-build.zip
 
 ---
 
@@ -257,65 +257,64 @@ Poți recalcula aceste hash-uri local (cu `certutil`, `sha256sum`, `7zip`, etc.)
 
 ---
 
-### ValidareSemnaturaAvansata-eCI-v2.0.3-portable.exe (one-file build)
+### ValidareSemnaturaAvansata-eCI-v2.0.4-portable.exe (one-file build)
 
-**Dimensiune:** 29,546,190 bytes
-**Data build:** 02/02/2026 21:46:25
+**Dimensiune:** 29,546,853 bytes
+**Data build:** 14/03/2026 14:45:08
 
 | Algoritm | Hash |
 |---------|------|
-| MD5 | `82ab0c51ab67a8adfb13ba66270ad0b8` |
-| SHA1 | `996d2b710ef85105541a07b4cd210c555c4c79d0` |
-| CRC32 | `80f69134` |
-| SHA256 | `9b58355c7a58536a427a5f9ce8f5eeba8791b2ee3bd8e96a0eaa3ef19642e5dd` |
-| SHA512 | `32a6a400e06b4e3be76b4e0d253ebba291c8445e8eaaf8e99a6a6946d5a247ee6bd44f37ad1e26a5a6f178bc0be8b1fa21db7c68ecc276fbba4f36ecc01c6d94` |
-| SHA3-256 | `9ed0cc20e5e1c42d2b081e19c58d8671174c1cbdf1f08bf4aad76f48d99fac5180ac97fd6141fad70938d68f73dc6350` |
+| MD5 | `6b0ff8819985cf338ae9ae9848bf4541` |
+| SHA1 | `8a20b15eee20bdf8528b2218f363baf238d1eaa8` |
+| CRC32 | `d2cc815b` |
+| SHA256 | `acdd7cecd6f0bccbb12daa7bf83e4f0191d1c568123c1f40ffdc2422c9ec83f1` |
+| SHA512 | `c738d6e8682730ee27bb12822621bd73d3f481ea3e38e4fb7faf685cede2c82dde1fa241ffc54a89178bbe9f15a0f7d32186be3c25db66e0e9ff582b1337ee58` |
+| SHA384 | `3b035b5a7301e292b2cfa88cc80ba33a256464bca04567204d811bb8b1a6fd561d78e6bfa8e3a9229ed2322e07ea0fec` |
 
 ---
 
-### ValidareSemnaturaAvansata-eCI-v2.0.3-portable-folder-build.zip
+### ValidareSemnaturaAvansata-eCI-v2.0.4-portable-folder-build.zip
 
-**Dimensiune:** 29,848,488 bytes
-**Data build:** 02/02/2026 21:46:35
+**Dimensiune:** 29,721,210 bytes
+**Data build:** 14/03/2026 14:44:38
 
 | Algoritm | Hash |
 |---------|------|
-| MD5 | `6f86e5a5247ab5a4f4862ac8e24c31e0` |
-| SHA1 | `d62cb7f6b1adc72bf1a4450d353eece6269a0778` |
-| CRC32 | `0b0c5c00` |
-| SHA256 | `15f6c7d845162f2a0dd1874140d3224781e76be86de6228223e5f4a4c44c5812` |
-| SHA512 | `d84b4a8f0c873c3cf2c4357bc242e1c0d57095d2e29d4ef53415b6764e44a1ab3527ec3a1ecc555c3992aa0f5d29b95d039a2f1ca2a4f3c88735d46c9460781e` |
-| SHA3-256 | `e7287687c2181fff66b017aa4e53619b75c63fc2308e49181cea3b03f86b1f6ce274a86a9adb1134eba3c5f834f5bdd7` |
+| MD5 | `9c7e136ba61e3ab8d1cb122a33ca1da0` |
+| SHA1 | `fde3de9a26c0be4f37d8ada9774d40eafe02ca8c` |
+| CRC32 | `1417c883` |
+| SHA256 | `8a490a8c507481f997027c955e1b7faa1e02bc8bf971be71cb71bc5a57447eee` |
+| SHA512 | `890c29a987fe29a4cf8cfe12c8faf81e5baf9d8859f8678c90a3b22c252bb0080554641cc7f5970b360b24256a789996beb9456911fc947f2bbbab5a5abbb9d7` |
+| SHA384 | `5f0a5c7adaaed404a5080d50ab21a20f2306489bda10742fa1b7e54e570146cfff3dd267537bcfec0be742875e30eb42` |
 
 Notă: această arhivă ZIP conține **varianta folder build** (executabilul + dependențele din folder).
 
 ---
 
-### ValidareSemnaturaAvansata-eCI.exe v2.0.3 (folder build)
+### ValidareSemnaturaAvansata-eCI.exe v2.0.4 (folder build)
 
-**Dimensiune:** 6,880,741 bytes
-**Data build:** 02/02/2026 21:45:34
+**Dimensiune:** 6,881,188 bytes
+**Data build:** 14/03/2026 14:43:46
 
 | Algoritm | Hash |
 |---------|------|
-| MD5 | `45617e106eccfa402108124c2a4d7cf7` |
-| SHA1 | `6da249af5d1197ea14fcfc6dc47babda172d1d61` |
-| CRC32 | `4270d080` |
-| SHA256 | `ccd4c706cd413c1ad441eb452ca3edf84f803740bbe930decfd6afe1eff6a760` |
-| SHA512 | `034ef5187d1dd2a3a015b07b14c2a42ad8dbffa3df2f46a2ed34b957850dcb5654546545c82522191e746d668b69c7e1c2ca8757f2d8806d68f58aaa3b7960fd` |
-| SHA3-256 | `93cca9005d5ea0ef8ae75b1d576a9900dc6c6772564b1a8388393746b2fd21a3b057e294a19ce5ae83bd8a2e5ceaef8f` |
+| MD5 | `554e9d4037959f53e936b5fb811f7d5d` |
+| SHA1 | `ca90c1e48814b05db0a9d04a3dcd4e74a0f844f8` |
+| CRC32 | `50478542` |
+| SHA256 | `4175eeb97c88cb93183bb2200beed54569ed356957feec155d7a3c6f7a696e6f` |
+| SHA512 | `48644b44a4566113d752240bb6090aaedbe9b6d4f94b0a12b63f5c0927fe08ac8bc8d84c38ad0ebf92753cd11f04f9714f7234d221ca1fd6e967489734ecaa44` |
+| SHA384 | `56b9529fe3be489a72a1ced51eff5086fed9343f0b62e0f9df841886b56d76e70f920965916ae2d9ddb9d15ee5424e16` |
 
 ---
 
 ### Exemplu verificare pe Windows
 
 ```powershell
-certutil -hashfile ValidareSemnaturaAvansata-eCI-v2.0.3-portable.exe SHA256
-certutil -hashfile ValidareSemnaturaAvansata-eCI-v2.0.3-portable-folder-build.zip SHA256
+certutil -hashfile ValidareSemnaturaAvansata-eCI-v2.0.4-portable.exe SHA256
+certutil -hashfile ValidareSemnaturaAvansata-eCI-v2.0.4-portable-folder-build.zip SHA256
 certutil -hashfile ValidareSemnaturaAvansata-eCI.exe SHA256
 ```
 
 **Notă:**
 Aceste hash-uri sunt publicate pentru transparență și verificabilitate.
 Dacă nu se potrivesc, **nu rula aplicația** și descarcă din nou arhiva doar din secțiunea oficială GitHub: https://github.com/24vlh/ValidareSemnaturaAvansata-eCI/releases.
-
