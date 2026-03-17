@@ -45,10 +45,11 @@ from asn1crypto import cms as asn1_cms
 # Versioning / Identity
 # =============================================================================
 APP_NAME = "Validare Semnătură Avansată cu eCI"
-APP_VERSION = "2.0.4"
+APP_VERSION = "2.0.5"
 APP_AUTHOR = "vlah.io • @24vlh"
 
 APP_CHANGELOG = [
+    ("2.0.5", "Afișare data semnării în rezultate + actualizare documentație/release"),
     ("2.0.4", "Compatibilitate PDF hybrid-reference + automatizare build WSL/PowerShell"),
     ("2.0.3", "Rebranding: ValidareSemnatura-eCI → ValidareSemnaturaAvansata-eCI"),
     ("2.0.2", "CLI implementat + output (--output, --no-stdout)"),
@@ -394,6 +395,7 @@ class Result:
     signer_key_usage: Optional[str] = None
     signer_not_before: Optional[str] = None
     signer_not_after: Optional[str] = None
+    signer_reported_time: Optional[str] = None
 
     root_cert_sha256: Optional[str] = None
     sub_cert_sha256: Optional[str] = None
@@ -479,6 +481,7 @@ def result_to_human(res: Result) -> str:
         lines.append(f"  – Timestamp OK: {yn(res.timestamp_ok)}")
         if res.timestamp_info:
             lines.append(f"  – {res.timestamp_info}")
+    lines.append(f"• Data semnării (raportată de semnatar): {res.signer_reported_time or 'UNKNOWN'}")
     if res.timestamp_value:
         lines.append(f"  – Timestamp: {res.timestamp_value}")
     if res.timestamp_tsa_subject:
@@ -567,6 +570,16 @@ def _is_entire_file_coverage(val: Any) -> bool:
 def _is_modification_none(val: Any) -> bool:
     s = str(val) if val is not None else ""
     return ("NONE" in s) or s.endswith(".NONE")
+
+
+def _extract_signer_reported_time(status: Any) -> Optional[str]:
+    try:
+        signer_reported_dt = getattr(status, "signer_reported_dt", None)
+        if signer_reported_dt is None:
+            return None
+        return signer_reported_dt.isoformat()
+    except Exception:
+        return None
 
 
 def _open_pdf_reader_compatible(stream: Any) -> PdfFileReader:
@@ -987,6 +1000,12 @@ def validate_pdf_against_two_cas(
                     timestamp_ok = any(ok_list)
                     timestamp_info = "Timestamp valid și de încredere." if timestamp_ok else "Timestamp prezent dar invalid."
 
+            signer_reported_time = _extract_signer_reported_time(status)
+
+            def build_result(**kwargs: Any) -> Result:
+                kwargs.setdefault("signer_reported_time", signer_reported_time)
+                return Result(**kwargs)
+
             coverage = getattr(status, "coverage", None)
             modification_level = getattr(status, "modification_level", None)
 
@@ -1039,7 +1058,7 @@ def validate_pdf_against_two_cas(
             strict_eci_ok: Optional[bool] = None
             if strict_eci_enabled:
                 if signer_crypto is None:
-                    return Result(
+                    return build_result(
                         ok=False,
                         message="STRICT_ECI_NO_SIGNER_CERT",
                         signature_intact=intact,
@@ -1075,7 +1094,7 @@ def validate_pdf_against_two_cas(
                 try:
                     ku = signer_crypto.extensions.get_extension_for_class(x509.KeyUsage).value
                     if not (ku.digital_signature or ku.content_commitment):
-                        return Result(
+                        return build_result(
                             ok=False,
                             message="STRICT_ECI_KEY_USAGE_FAIL",
                             signature_intact=intact,
@@ -1102,7 +1121,7 @@ def validate_pdf_against_two_cas(
                             used_sub_path=str(sub_ca_path),
                         )
                 except Exception:
-                    return Result(
+                    return build_result(
                         ok=False,
                         message="STRICT_ECI_KEY_USAGE_MISSING",
                         signature_intact=intact,
@@ -1137,7 +1156,7 @@ def validate_pdf_against_two_cas(
                 eku_oids = _extract_eku_oids(signer_crypto)
                 if ECI_REQUIRED_EKU_OIDS:
                     if not set(eku_oids).intersection(ECI_REQUIRED_EKU_OIDS):
-                        return Result(
+                        return build_result(
                             ok=False,
                             message="STRICT_ECI_EKU_FAIL",
                             signature_intact=intact,
@@ -1169,7 +1188,7 @@ def validate_pdf_against_two_cas(
                 pol_oids = _extract_policy_oids(signer_crypto)
                 if ECI_REQUIRED_POLICY_OIDS:
                     if not set(pol_oids).intersection(ECI_REQUIRED_POLICY_OIDS):
-                        return Result(
+                        return build_result(
                             ok=False,
                             message="STRICT_ECI_POLICY_FAIL",
                             signature_intact=intact,
@@ -1205,7 +1224,7 @@ def validate_pdf_against_two_cas(
             hard_extras: Optional[List[str]] = None
             if hard_mode:
                 if signer_fp is None:
-                    return Result(
+                    return build_result(
                         ok=False,
                         message="HARD_MODE_NO_SIGNER_CERT_EXTRACTED",
                         signature_intact=intact,
@@ -1251,7 +1270,7 @@ def validate_pdf_against_two_cas(
                 try:
                     hard_ok, hard_extras = _hard_mode_check(embedded_sig, allowed)
                 except Exception as e:
-                    return Result(
+                    return build_result(
                         ok=False,
                         message=f"HARD_MODE_PARSE_FAILED: {type(e).__name__}: {e}",
                         signature_intact=intact,
@@ -1294,7 +1313,7 @@ def validate_pdf_against_two_cas(
                     )
 
                 if not hard_ok:
-                    return Result(
+                    return build_result(
                         ok=False,
                         message="HARD_MODE_EXTRA_EMBEDDED_CERTS_DETECTED",
                         signature_intact=intact,
@@ -1350,7 +1369,7 @@ def validate_pdf_against_two_cas(
                 expected_issuer = sub_cert.subject.rfc4514_string()
 
                 if signer_crypto is None:
-                    return Result(
+                    return build_result(
                         ok=False,
                         message="STRICT_ISSUER_NO_SIGNER_CERT_EXTRACTED",
                         signature_intact=intact,
@@ -1395,7 +1414,7 @@ def validate_pdf_against_two_cas(
                 strict_sig_ok = _verify_cert_issued_by(signer_crypto, sub_cert)
 
                 if not strict_name_ok or not strict_sig_ok:
-                    return Result(
+                    return build_result(
                         ok=False,
                         message="STRICT_ISSUER_MISMATCH",
                         signature_intact=intact,
@@ -1483,7 +1502,7 @@ def validate_pdf_against_two_cas(
                 "timestamp_ok": bool(timestamp_ok) if timestamp_ok is not None else None,
             }
 
-            return Result(
+            return build_result(
                 ok=ok,
                 message=msg,
                 signature_intact=intact,
@@ -1632,6 +1651,12 @@ def validate_embedded_signature_against_two_cas(
                 timestamp_ok = any(ok_list)
                 timestamp_info = "Timestamp valid și de încredere." if timestamp_ok else "Timestamp prezent dar invalid."
 
+        signer_reported_time = _extract_signer_reported_time(status)
+
+        def build_result(**kwargs: Any) -> Result:
+            kwargs.setdefault("signer_reported_time", signer_reported_time)
+            return Result(**kwargs)
+
         coverage = getattr(status, "coverage", None)
         modification_level = getattr(status, "modification_level", None)
 
@@ -1684,7 +1709,7 @@ def validate_embedded_signature_against_two_cas(
         strict_eci_ok: Optional[bool] = None
         if strict_eci_enabled:
             if signer_crypto is None:
-                return Result(
+                return build_result(
                     ok=False,
                     message="STRICT_ECI_NO_SIGNER_CERT",
                     signature_intact=intact,
@@ -1720,7 +1745,7 @@ def validate_embedded_signature_against_two_cas(
             try:
                 ku = signer_crypto.extensions.get_extension_for_class(x509.KeyUsage).value
                 if not (ku.digital_signature or ku.content_commitment):
-                    return Result(
+                    return build_result(
                         ok=False,
                         message="STRICT_ECI_KEY_USAGE_FAIL",
                         signature_intact=intact,
@@ -1747,7 +1772,7 @@ def validate_embedded_signature_against_two_cas(
                         used_sub_path=str(sub_ca_path),
                     )
             except Exception:
-                return Result(
+                return build_result(
                     ok=False,
                     message="STRICT_ECI_KEY_USAGE_MISSING",
                     signature_intact=intact,
@@ -1782,7 +1807,7 @@ def validate_embedded_signature_against_two_cas(
             eku_oids = _extract_eku_oids(signer_crypto)
             if ECI_REQUIRED_EKU_OIDS:
                 if not set(eku_oids).intersection(ECI_REQUIRED_EKU_OIDS):
-                    return Result(
+                    return build_result(
                         ok=False,
                         message="STRICT_ECI_EKU_FAIL",
                         signature_intact=intact,
@@ -1814,7 +1839,7 @@ def validate_embedded_signature_against_two_cas(
             pol_oids = _extract_policy_oids(signer_crypto)
             if ECI_REQUIRED_POLICY_OIDS:
                 if not set(pol_oids).intersection(ECI_REQUIRED_POLICY_OIDS):
-                    return Result(
+                    return build_result(
                         ok=False,
                         message="STRICT_ECI_POLICY_FAIL",
                         signature_intact=intact,
@@ -1850,7 +1875,7 @@ def validate_embedded_signature_against_two_cas(
         hard_extras: Optional[List[str]] = None
         if hard_mode:
             if signer_fp is None:
-                return Result(
+                return build_result(
                     ok=False,
                     message="HARD_MODE_NO_SIGNER_CERT_EXTRACTED",
                     signature_intact=intact,
@@ -1896,7 +1921,7 @@ def validate_embedded_signature_against_two_cas(
             try:
                 hard_ok, hard_extras = _hard_mode_check(embedded_sig, allowed)
             except Exception as e:
-                return Result(
+                return build_result(
                     ok=False,
                     message=f"HARD_MODE_PARSE_FAILED: {type(e).__name__}: {e}",
                     signature_intact=intact,
@@ -1939,7 +1964,7 @@ def validate_embedded_signature_against_two_cas(
                 )
 
             if not hard_ok:
-                return Result(
+                return build_result(
                     ok=False,
                     message="HARD_MODE_EXTRA_EMBEDDED_CERTS_DETECTED",
                     signature_intact=intact,
@@ -1995,7 +2020,7 @@ def validate_embedded_signature_against_two_cas(
             expected_issuer = sub_cert.subject.rfc4514_string()
 
             if signer_crypto is None:
-                return Result(
+                return build_result(
                     ok=False,
                     message="STRICT_ISSUER_NO_SIGNER_CERT_EXTRACTED",
                     signature_intact=intact,
@@ -2040,7 +2065,7 @@ def validate_embedded_signature_against_two_cas(
             strict_sig_ok = _verify_cert_issued_by(signer_crypto, sub_cert)
 
             if not strict_name_ok or not strict_sig_ok:
-                return Result(
+                return build_result(
                     ok=False,
                     message="STRICT_ISSUER_MISMATCH",
                     signature_intact=intact,
@@ -2127,8 +2152,7 @@ def validate_embedded_signature_against_two_cas(
             "timestamp_required": bool(require_timestamp),
             "timestamp_ok": bool(timestamp_ok) if timestamp_ok is not None else None,
         }
-
-        return Result(
+        return build_result(
             ok=ok,
             message=msg,
             signature_intact=intact,
@@ -2833,24 +2857,7 @@ def run_gui() -> int:
     def copy_signer_details():
         if last_result is None:
             return
-        status = signer_validity_status(last_result)
-        lines = [
-            f"Subject: {last_result.signer_subject or 'UNKNOWN'}",
-            f"Emitent: {last_result.signer_issuer or 'UNKNOWN'}",
-            f"SHA256: {last_result.signer_cert_sha256 or 'UNKNOWN'}",
-            f"Not Before: {last_result.signer_not_before or 'UNKNOWN'}",
-            f"Not After: {last_result.signer_not_after or 'UNKNOWN'}",
-            f"Stare: {status}",
-            f"Key Usage: {last_result.signer_key_usage or 'UNKNOWN'}",
-            f"EKU OIDs: {', '.join(last_result.signer_eku_oids) if last_result.signer_eku_oids else 'UNKNOWN'}",
-            f"Policy OIDs: {', '.join(last_result.signer_policy_oids) if last_result.signer_policy_oids else 'UNKNOWN'}",
-        ]
-        if last_result.timestamp_value or last_result.content_timestamp_value:
-            lines.append(f"Timestamp: {last_result.timestamp_value or 'UNKNOWN'}")
-            lines.append(f"TSA: {last_result.timestamp_tsa_subject or 'UNKNOWN'}")
-            if last_result.content_timestamp_value:
-                lines.append(f"Content TS: {last_result.content_timestamp_value}")
-                lines.append(f"Content TSA: {last_result.content_timestamp_tsa_subject or 'UNKNOWN'}")
+        lines = build_cert_lines(last_result)
         root.clipboard_clear()
         root.clipboard_append("\n".join(lines))
         root.update()
@@ -2914,6 +2921,7 @@ def run_gui() -> int:
             f"SHA256: {res.signer_cert_sha256 or 'UNKNOWN'}",
             f"Not Before: {res.signer_not_before or 'UNKNOWN'}",
             f"Not After: {res.signer_not_after or 'UNKNOWN'}",
+            f"Data semnării (raportată de semnatar): {res.signer_reported_time or 'UNKNOWN'}",
             f"Stare: {signer_validity_status(res)}",
             f"Key Usage: {res.signer_key_usage or 'UNKNOWN'}",
             f"EKU OIDs: {', '.join(res.signer_eku_oids) if res.signer_eku_oids else 'UNKNOWN'}",
@@ -2990,10 +2998,12 @@ def run_gui() -> int:
             subject = res.signer_subject or "UNKNOWN"
             issuer = res.signer_issuer or "UNKNOWN"
             policy = ", ".join(res.signer_policy_oids) if res.signer_policy_oids else "UNKNOWN"
+            signing_time = res.signer_reported_time or "—"
             ts_note = res.timestamp_value or res.content_timestamp_value or "—"
             summary_lines.append(
                 f"Semnătura {idx}: {'VALID' if res.ok else 'INVALID'} | "
-                f"Subiect: {subject} | Emitent: {issuer} | Policy OID: {policy} | Timestamp: {ts_note}"
+                f"Subiect: {subject} | Emitent: {issuer} | Policy OID: {policy} | "
+                f"Semnat la: {signing_time} | Timestamp: {ts_note}"
             )
         multi_summary.configure(state="normal")
         multi_summary.delete("1.0", "end")
