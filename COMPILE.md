@@ -1,5 +1,10 @@
 # COMPILE.md
 
+## Path alias
+
+- `@24vlh` => Windows `W:/public_html/24vlh`
+- `@24vlh` => WSL `/mnt/w/public_html/24vlh`
+
 Build and release notes for `Validare Semnătură Avansată cu eCI` (`ValidareSemnaturaAvansata-eCI`).
 
 This project now has two canonical build entrypoints:
@@ -14,16 +19,15 @@ The PowerShell script is the source of truth. The WSL script simply invokes it t
 
 ## Paths
 
-Project-local paths:
+Project-local path:
 
-- Windows repo path: `W:\public_html\24vlh\ValidareSemnaturaAvansata-eCI`
-- WSL repo path: `/mnt/w/public_html/24vlh/ValidareSemnaturaAvansata-eCI`
+- `@24vlh/ValidareSemnaturaAvansata-eCI`
 
 Clean Windows machine example path:
 
 - `C:\ValidareSemnaturaAvansata-eCI`
 
-If you are building from a fresh Windows PC outside the 24VLH workspace, use the `C:\...` example path. If you are building from the shared workspace, use the `W:\...` / `/mnt/w/...` paths above.
+If you are building from a fresh Windows PC outside the 24VLH workspace, use the `C:\...` example path. If you are building from the shared workspace, use `@24vlh/ValidareSemnaturaAvansata-eCI` in markdown prose and the concrete Windows/WSL paths only inside commands.
 
 ---
 
